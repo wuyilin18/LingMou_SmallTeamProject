@@ -39,43 +39,31 @@
       </view>
 
       <view class="bento-grid">
-        <view class="top-status-row">
-          <view class="bento-item glass-card status-card-wide">
-            <view class="card-top-bar">
-              <view class="status-header">
-                <view :class="['status-dot', isConnected ? 'dot-online' : 'dot-offline']"></view>
-                <text class="card-title" style="margin-bottom: 0;">BLE Link Status</text>
-              </view>
-              <view class="battery-indicator" v-if="isConnected">
-                <text class="battery-icon">🔋</text>
-                <text class="battery-text">{{ batteryLevel }}%</text>
-              </view>
+        
+	<view class="bento-item glass-card status-card-wide">
+          <view class="card-top-bar">
+            <view class="status-header">
+              <view :class="['status-dot', isConnected ? 'dot-online' : 'dot-offline']"></view>
+              <text class="card-title" style="margin-bottom: 0;">BLE Link Status</text>
             </view>
-
-            <view class="card-bottom-bar">
-              <view class="status-main">
-                <text class="main-title">LingMou Core</text>
-                <text class="sub-title">
-                  {{ statusText }}
-                </text>
-              </view>
-              <button :class="['ble-scan-btn', isScanning ? 'btn-scanning' : '']" @click="toggleBleConnection">
-                <text class="btn-text">{{ isConnected ? '断开蓝牙' : (isScanning ? '寻呼中...' : '寻呼设备') }}</text>
-              </button>
+            <view class="battery-indicator" v-if="isConnected">
+              <text class="battery-icon">🔋</text>
+              <text class="battery-text">{{ batteryLevel }}%</text>
             </view>
           </view>
-
-          <view class="bento-item glass-card mode-card">
-            <text class="mode-card-title">显示模式</text>
-            <button :class="['mode-switch-btn', modeCommandPending ? 'mode-switching' : '']" :disabled="modeCommandPending" @click="toggleDisplayMode">
-              <text class="mode-icon">{{ hardwareMode === 0 ? '👁' : '☰' }}</text>
-              <text class="mode-label">{{ hardwareMode === 0 ? '眼睛模式' : '信息模式' }}</text>
+          
+          <view class="card-bottom-bar">
+            <view class="status-main">
+              <text class="main-title">LingMou Core</text>
+              <text class="sub-title">
+                {{ statusText }}
+              </text>
+            </view>
+            <button :class="['ble-scan-btn', isScanning ? 'btn-scanning' : '']" @click="toggleBleConnection">
+              <text class="btn-text">{{ isConnected ? '断开蓝牙' : (isScanning ? '寻呼中...' : '寻呼设备') }}</text>
             </button>
-            <text class="mode-hint">{{ modeCommandPending ? '切换中...' : (isConnected ? '轻触切换' : '等待连接') }}</text>
           </view>
         </view>
-
-        <block v-if="activePanel === 'eye'">
         <view class="bento-item glass-card override-card">
           <button class="action-icon-btn blink-btn" @click="sendBlink">
             <view class="icon-wrapper"><text class="icon">✨</text></view>
@@ -112,55 +100,6 @@
               {{ emo }}
             </button>
           </view>
-        </view>
-        </block>
-
-        <view v-else class="bento-item glass-card info-card">
-          <view class="info-header">
-            <view>
-              <text class="info-title">环境信息</text>
-              <text class="info-time">{{ hardwareTime }}</text>
-            </view>
-            <view :class="['telemetry-status', telemetryReady ? 'telemetry-online' : 'telemetry-offline']">
-              <view class="telemetry-dot"></view>
-              <text>{{ telemetryReady ? '实时数据' : '等待数据' }}</text>
-            </view>
-          </view>
-
-          <view class="info-metrics">
-            <view class="metric-item">
-              <text class="metric-label">温度</text>
-              <view class="metric-value-row">
-                <text class="metric-value">{{ formattedTemperature }}</text>
-                <text class="metric-unit">°C</text>
-              </view>
-            </view>
-            <view class="metric-divider"></view>
-            <view class="metric-item">
-              <text class="metric-label">湿度</text>
-              <view class="metric-value-row">
-                <text class="metric-value">{{ formattedHumidity }}</text>
-                <text class="metric-unit">%</text>
-              </view>
-            </view>
-          </view>
-
-          <view class="wifi-section">
-            <view class="wifi-status-main">
-              <view :class="['wifi-icon-wrap', wifiConnected ? 'wifi-online' : 'wifi-offline']">
-                <text class="wifi-icon">⌁</text>
-              </view>
-              <view class="wifi-copy">
-                <text class="wifi-title">Wi-Fi</text>
-                <text class="wifi-name">{{ wifiStatusText }}</text>
-              </view>
-            </view>
-            <view :class="['wifi-state-pill', wifiConnected ? 'state-connected' : 'state-disconnected']">
-              <text>{{ wifiConnected ? '已连接' : '未连接' }}</text>
-            </view>
-          </view>
-
-          <text v-if="!ahtReady" class="sensor-note">环境传感器暂无有效数据</text>
         </view>
 
       </view> 
