@@ -306,34 +306,63 @@ void Eye::Draw() {
 }
 
 void Eye::ApplyPreset(const EyeConfig config) {
-	Config.OffsetX = this->IsMirrored ? -config.OffsetX : config.OffsetX;
-	Config.OffsetY = -config.OffsetY;
-	Config.Height = config.Height;
-	Config.Width = config.Width;
-	Config.Slope_Top = this->IsMirrored ? config.Slope_Top : -config.Slope_Top;
-	Config.Slope_Bottom = this->IsMirrored ? config.Slope_Bottom : -config.Slope_Bottom;
-	Config.Radius_Top = config.Radius_Top;
-	Config.Radius_Bottom = config.Radius_Bottom;
-	Config.Inverse_Radius_Top = config.Inverse_Radius_Top;
-	Config.Inverse_Radius_Bottom = config.Inverse_Radius_Bottom;
+    Config.OffsetX = this->IsMirrored ? -config.OffsetX : config.OffsetX;
+    Config.OffsetY = -config.OffsetY;
+    Config.Height = config.Height;
+    Config.Width = config.Width;
+    Config.Slope_Top = this->IsMirrored ? config.Slope_Top : -config.Slope_Top;
+    Config.Slope_Bottom = this->IsMirrored ? config.Slope_Bottom : -config.Slope_Bottom;
+    Config.Radius_Top = config.Radius_Top;
+    Config.Radius_Bottom = config.Radius_Bottom;
+    Config.Inverse_Radius_Top = config.Inverse_Radius_Top;
+    Config.Inverse_Radius_Bottom = config.Inverse_Radius_Bottom;
 
-	Transition.Animation.Restart();
+    // ★ 补上
+    Config.Inverse_Offset_Top = config.Inverse_Offset_Top;
+    Config.Inverse_Offset_Bottom = config.Inverse_Offset_Bottom;
+    Config.Color = config.Color;
+
+    // ★ 让初始目标也有确定值
+    Transition.Destin = Config;
+
+    Transition.Animation.Restart();
 }
 
 void Eye::TransitionTo(const EyeConfig config) {
-	Transition.Destin.OffsetX = this->IsMirrored ? -config.OffsetX : config.OffsetX;
-	Transition.Destin.OffsetY = -config.OffsetY;
-	Transition.Destin.Height = config.Height;
-	Transition.Destin.Width = config.Width;
-	Transition.Destin.Slope_Top = this->IsMirrored ? config.Slope_Top : -config.Slope_Top;
-	Transition.Destin.Slope_Bottom = this->IsMirrored ? config.Slope_Bottom : -config.Slope_Bottom;
-	Transition.Destin.Radius_Top = config.Radius_Top;
-	Transition.Destin.Radius_Bottom = config.Radius_Bottom;
-	Transition.Destin.Inverse_Radius_Top = config.Inverse_Radius_Top;
-	Transition.Destin.Inverse_Radius_Bottom = config.Inverse_Radius_Bottom;
+    Transition.Destin.OffsetX =
+        this->IsMirrored ? -config.OffsetX : config.OffsetX;
 
-	Transition.Animation.Restart();
+    Transition.Destin.OffsetY = -config.OffsetY;
+    Transition.Destin.Height = config.Height;
+    Transition.Destin.Width = config.Width;
+
+    Transition.Destin.Slope_Top =
+        this->IsMirrored ? config.Slope_Top : -config.Slope_Top;
+
+    Transition.Destin.Slope_Bottom =
+        this->IsMirrored ? config.Slope_Bottom : -config.Slope_Bottom;
+
+    Transition.Destin.Radius_Top = config.Radius_Top;
+    Transition.Destin.Radius_Bottom = config.Radius_Bottom;
+
+    Transition.Destin.Inverse_Radius_Top =
+        config.Inverse_Radius_Top;
+
+    Transition.Destin.Inverse_Radius_Bottom =
+        config.Inverse_Radius_Bottom;
+
+    // ★ 原来漏掉的
+    Transition.Destin.Inverse_Offset_Top =
+        config.Inverse_Offset_Top;
+
+    Transition.Destin.Inverse_Offset_Bottom =
+        config.Inverse_Offset_Bottom;
+
+    Transition.Destin.Color = config.Color;
+
+    Transition.Animation.Restart();
 }
+
 
 // ===== FaceExpression.cpp =====
 FaceExpression::FaceExpression(Face& face) : _face(face)
