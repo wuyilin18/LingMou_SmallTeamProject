@@ -38,71 +38,203 @@
         </view>
       </view>
 
-      <view class="bento-grid">
-        
-	<view class="bento-item glass-card status-card-wide">
+      <view class="top-grid">
+        <view class="bento-item glass-card status-card-wide">
           <view class="card-top-bar">
             <view class="status-header">
               <view :class="['status-dot', isConnected ? 'dot-online' : 'dot-offline']"></view>
-              <text class="card-title" style="margin-bottom: 0;">BLE Link Status</text>
+              <text class="card-title" style="margin-bottom: 0;">BLE / WiFi Link Status</text>
             </view>
-            <view class="battery-indicator" v-if="isConnected">
-              <text class="battery-icon">🔋</text>
-              <text class="battery-text">{{ batteryLevel }}%</text>
+            <view class="link-status-pills">
+              <view class="link-pill">
+                <view :class="['mini-status-dot', isConnected ? 'dot-online' : 'dot-offline']"></view>
+                <text>BLE</text>
+              </view>
+              <view class="link-pill wifi-pill" @click.stop="openWifiDrawer">
+                <view :class="['mini-status-dot', wifiConnected ? 'dot-online' : (wifiConnecting ? 'dot-pending' : 'dot-offline')]"></view>
+                <text>WiFi</text>
+              </view>
             </view>
           </view>
-          
+
           <view class="card-bottom-bar">
             <view class="status-main">
               <text class="main-title">LingMou Core</text>
-              <text class="sub-title">
-                {{ statusText }}
-              </text>
+              <text class="sub-title">{{ statusDetailText }}</text>
+              <text class="status-meta" v-if="wifiIp">IP · {{ wifiIp }}</text>
             </view>
             <button :class="['ble-scan-btn', isScanning ? 'btn-scanning' : '']" @click="toggleBleConnection">
               <text class="btn-text">{{ isConnected ? '断开蓝牙' : (isScanning ? '寻呼中...' : '寻呼设备') }}</text>
             </button>
           </view>
         </view>
-        <view class="bento-item glass-card override-card">
-          <button class="action-icon-btn blink-btn" @click="sendBlink">
-            <view class="icon-wrapper"><text class="icon">✨</text></view>
-            <text class="btn-label">灵瞬</text>
-          </button>
-          
-          <button :class="['action-icon-btn', 'auto-btn', isIllusionOn ? 'btn-active' : '']" @click="toggleIllusion">
-            <view class="icon-wrapper"><text class="icon">🎭</text></view>
-            <text class="btn-label">幻相</text>
-          </button>
-          
-          <button :class="['action-icon-btn', 'manual-btn', isWanderOn ? 'btn-active' : '']" @click="toggleWander">
-            <view class="icon-wrapper"><text class="icon">🛸</text></view>
-            <text class="btn-label">游荡</text>
-          </button>
-        </view>
 
-        <view class="bento-item glass-card tracking-card">
-          <view class="card-title" style="margin-bottom: 12px;">Eye Tracking</view>
-          <view class="slider-row">
-            <text class="axis">X</text>
-            <slider class="cyber-slider" :value="lookX" min="-1" max="1" step="0.1" @change="onLookXChange" :activeColor="isDarkMode ? '#22d3ee' : '#0891b2'" block-size="16" />
+        <view class="bento-item glass-card mode-toggle-card" @click="toggleMode">
+          <view class="mode-icon-scene">
+            <view :class="['mode-icon-flipper', activeMode === 'info' ? 'is-info' : '']">
+              <view class="mode-icon-face mode-icon-eye">◉</view>
+              <view class="mode-icon-face mode-icon-info">◌</view>
+            </view>
+            <view class="mode-icon-orbit"></view>
           </view>
-          <view class="slider-row">
-            <text class="axis">Y</text>
-            <slider class="cyber-slider" :value="lookY" min="-1" max="1" step="0.1" @change="onLookYChange" :activeColor="isDarkMode ? '#22d3ee' : '#0891b2'" block-size="16" />
+          <text class="mode-kicker">VIEW MODE</text>
+          <text class="mode-label">{{ activeMode === 'eye' ? '眼睛模式' : '信息模式' }}</text>
+          <text class="mode-hint">点击卡片切换</text>
+        </view>
+      </view>
+
+      <view :class="['flip-stage', activeMode === 'info' ? 'is-info' : '']">
+        <view class="flip-inner">
+          <!-- 眼睛卡片：快捷指令、追踪和情绪均属于同一张卡片 -->
+          <view class="bento-item glass-card mode-face eye-face">
+            <view class="face-heading">
+              <view>
+                <text class="face-kicker">EYE CONTROL</text>
+                <text class="face-title">灵眸控制中心</text>
+              </view>
+              <text class="face-state">{{ isConnected ? 'LIVE' : 'OFFLINE' }}</text>
+            </view>
+
+            <view class="face-section command-section">
+              <view class="command-grid">
+                <button class="action-icon-btn blink-btn" @click="sendBlink">
+                  <view class="icon-wrapper"><text class="icon">✨</text></view>
+                  <text class="btn-label">灵瞬</text>
+                </button>
+
+                <button :class="['action-icon-btn', 'auto-btn', isIllusionOn ? 'btn-active' : '']" @click="toggleIllusion">
+                  <view class="icon-wrapper"><text class="icon">🎭</text></view>
+                  <text class="btn-label">幻相</text>
+                </button>
+
+                <button :class="['action-icon-btn', 'manual-btn', isWanderOn ? 'btn-active' : '']" @click="toggleWander">
+                  <view class="icon-wrapper"><text class="icon">🛸</text></view>
+                  <text class="btn-label">游荡</text>
+                </button>
+              </view>
+            </view>
+
+            <view class="face-section tracking-section">
+              <view class="section-heading">
+                <text class="card-title">Eye Tracking</text>
+                <text class="section-caption">手动凝视</text>
+              </view>
+              <view class="slider-row">
+                <text class="axis">X</text>
+                <slider class="cyber-slider" :value="lookX" min="-1" max="1" step="0.1" @change="onLookXChange" :activeColor="isDarkMode ? '#22d3ee' : '#0891b2'" block-size="16" />
+                <text class="axis-value">{{ Number(lookX).toFixed(1) }}</text>
+              </view>
+              <view class="slider-row">
+                <text class="axis">Y</text>
+                <slider class="cyber-slider" :value="lookY" min="-1" max="1" step="0.1" @change="onLookYChange" :activeColor="isDarkMode ? '#22d3ee' : '#0891b2'" block-size="16" />
+                <text class="axis-value">{{ Number(lookY).toFixed(1) }}</text>
+              </view>
+            </view>
+
+            <view class="face-section emotion-section">
+              <view class="section-heading">
+                <text class="card-title">Emotions</text>
+                <text class="section-caption">选择表情</text>
+              </view>
+              <view class="chip-grid">
+                <button class="chip-btn" v-for="emo in emotions" :key="emo" @click="sendEmotion(emo)">
+                  {{ emo }}
+                </button>
+              </view>
+            </view>
+          </view>
+
+          <!-- 信息卡片：与眼睛卡片共用外框尺寸，翻转时不发生跳动 -->
+          <view class="bento-item glass-card mode-face info-face">
+            <view class="face-heading info-heading">
+              <view>
+                <text class="face-kicker">ENVIRONMENT</text>
+                <text class="face-title">LingMou Ambient</text>
+              </view>
+              <view class="live-badge">
+                <view :class="['mini-status-dot', telemetrySource === 'WiFi' ? 'dot-online' : 'dot-pending']"></view>
+                <text>LIVE · {{ telemetrySource }}</text>
+              </view>
+            </view>
+
+            <view class="info-time-row">
+              <text class="info-time">{{ telemetry.time || '--:--:--' }}</text>
+              <text class="info-time-note">实时环境读数</text>
+            </view>
+
+            <view class="info-metric metric-temperature">
+              <view class="metric-topline">
+                <view class="metric-icon thermometer-mark"><view></view></view>
+                <view class="metric-copy">
+                  <text class="metric-label">TEMPERATURE</text>
+                  <text class="metric-note">环境温度 · {{ temperatureComfort }}</text>
+                </view>
+                <view class="metric-value">
+                  <text class="metric-number">{{ temperatureDisplay }}</text>
+                  <text class="metric-unit">°C</text>
+                </view>
+              </view>
+              <view class="metric-track"><view class="metric-fill temp-fill" :style="{ width: temperatureLevel + '%' }"></view></view>
+            </view>
+
+            <view class="info-metric metric-humidity">
+              <view class="metric-topline">
+                <view class="metric-icon droplet-mark"><view></view></view>
+                <view class="metric-copy">
+                  <text class="metric-label">HUMIDITY</text>
+                  <text class="metric-note">空气湿度 · {{ humidityComfort }}</text>
+                </view>
+                <view class="metric-value">
+                  <text class="metric-number">{{ humidityDisplay }}</text>
+                  <text class="metric-unit">%</text>
+                </view>
+              </view>
+              <view class="metric-track"><view class="metric-fill humidity-fill" :style="{ width: humidityLevel + '%' }"></view></view>
+            </view>
+
+            <view class="info-footer">
+              <text>AHT20 · {{ telemetry.aht ? 'READY' : 'UNAVAILABLE' }}</text>
+              <text>{{ wifiConnected ? 'WiFi LIVE' : 'BLE LIVE' }}</text>
+            </view>
           </view>
         </view>
+      </view>
 
-        <view class="bento-item glass-card emotion-card">
-          <view class="card-title">Emotions</view>
-          <view class="chip-grid">
-            <button class="chip-btn" v-for="emo in emotions" :key="emo" @click="sendEmotion(emo)">
-              {{ emo }}
+      <view v-if="wifiDrawerVisible" class="drawer-layer" @click="closeWifiDrawer">
+        <view class="wifi-drawer" @click.stop>
+          <view class="drawer-handle"></view>
+          <view class="drawer-heading">
+            <view>
+              <text class="face-kicker">NETWORK SETUP</text>
+              <text class="drawer-title">WiFi 配置</text>
+            </view>
+            <text class="drawer-close" @click="closeWifiDrawer">×</text>
+          </view>
+
+          <view class="drawer-field">
+            <text class="drawer-label">WiFi 名称</text>
+            <input class="drawer-input" v-model="wifiForm.ssid" placeholder="输入 2.4GHz WiFi 名称" />
+          </view>
+          <view class="drawer-field">
+            <text class="drawer-label">WiFi 密码</text>
+            <input class="drawer-input" v-model="wifiForm.password" password placeholder="输入 WiFi 密码" />
+          </view>
+
+          <view class="drawer-status-row">
+            <view :class="['mini-status-dot', wifiConnected ? 'dot-online' : (wifiConnecting ? 'dot-pending' : 'dot-offline')]"></view>
+            <text>{{ wifiDrawerStatus }}</text>
+            <text v-if="wifiIp" class="drawer-ip">{{ wifiIp }}</text>
+          </view>
+
+          <view class="drawer-actions">
+            <button class="drawer-secondary-btn" @click="closeWifiDrawer">取消</button>
+            <button class="drawer-primary-btn" :disabled="wifiConfigSaving" @click="saveWifiConfig">
+              {{ wifiConfigSaving ? '连接中...' : '保存并连接' }}
             </button>
           </view>
+          <text class="drawer-note">配网信息通过已连接的 BLE 通道发送到 LingMou</text>
         </view>
-
-      </view> 
+      </view>
     </view>
   </view>
 </template>
@@ -121,12 +253,36 @@ export default {
       deviceId: '',
       serviceId: '4fafc201-1fb5-459e-8fcc-c5c9c331914b', // ESP32 默认指令服务端 UUID
       charId: 'beb5483e-36e1-4688-b7f5-ea07361b26a8',    // ESP32 默认指令写入特征值 UUID
+      txCharId: 'beb5483e-36e1-4688-b7f5-ea07361b26a9',  // ESP32 遥测通知特征值 UUID
       targetDeviceName: 'LingMou', // 锁定寻找名为 LingMou 的设备
       
-      // 🔋 新增：真实的电池生命体征变量和标准 UUID
-      batteryLevel: '--', 
-      batteryServiceId: '0000180F-0000-1000-8000-00805F9B34FB', // BLE 国际标准电池服务
-      batteryCharId: '00002A19-0000-1000-8000-00805F9B34FB',    // BLE 国际标准电池特征值
+      // 🔁 正反两面主卡片
+      activeMode: 'eye',
+      bleRxBuffer: '',
+
+      // 🌡️ 硬件遥测
+      telemetry: {
+        temperature: null,
+        humidity: null,
+        aht: 0,
+        time: '--:--:--',
+        wifi: 0
+      },
+      telemetrySource: 'BLE',
+      wifiConnected: false,
+      wifiConnecting: false,
+      wifiSsid: '',
+      wifiIp: '',
+      wifiDrawerVisible: false,
+      wifiConfigSaving: false,
+      wifiForm: {
+        ssid: '',
+        password: ''
+      },
+      wifiPollTimer: null,
+      modeFlipTimer: null,
+      bleConnectionListenerReady: false,
+      bleValueListenerReady: false,
 
       // 物理外挂状态
       isIllusionOn: false,
@@ -141,6 +297,54 @@ export default {
       ]
     };
   },
+  computed: {
+    statusDetailText() {
+      if (!this.isConnected) return this.statusText;
+      if (this.wifiConnected) return '蓝牙已连接 · WiFi 已连接';
+      if (this.wifiConnecting) return '蓝牙已连接 · WiFi 连接中';
+      return '蓝牙已连接 · WiFi 待配置';
+    },
+    temperatureDisplay() {
+      return this.telemetry.temperature === null || this.telemetry.temperature === undefined
+        ? '--.-'
+        : Number(this.telemetry.temperature).toFixed(1);
+    },
+    humidityDisplay() {
+      return this.telemetry.humidity === null || this.telemetry.humidity === undefined
+        ? '--.-'
+        : Number(this.telemetry.humidity).toFixed(1);
+    },
+    temperatureLevel() {
+      const value = Number(this.telemetry.temperature);
+      if (!Number.isFinite(value)) return 0;
+      return Math.max(4, Math.min(100, ((value + 10) / 50) * 100));
+    },
+    humidityLevel() {
+      const value = Number(this.telemetry.humidity);
+      if (!Number.isFinite(value)) return 0;
+      return Math.max(4, Math.min(100, value));
+    },
+    temperatureComfort() {
+      const value = Number(this.telemetry.temperature);
+      if (!Number.isFinite(value)) return '等待数据';
+      if (value < 18) return '偏低';
+      if (value > 28) return '偏高';
+      return '舒适';
+    },
+    humidityComfort() {
+      const value = Number(this.telemetry.humidity);
+      if (!Number.isFinite(value)) return '等待数据';
+      if (value < 35) return '偏干';
+      if (value > 70) return '偏湿';
+      return '舒适';
+    },
+    wifiDrawerStatus() {
+      if (this.wifiConnected) return 'WiFi 已连接';
+      if (this.wifiConnecting) return 'WiFi 连接中...';
+      if (!this.isConnected) return '请先连接 BLE';
+      return '等待 WiFi 配置';
+    }
+  },
   onLoad() {
     setTimeout(() => { this.showSplash = false; }, 4000); 
     this.syncSystemTheme(); 
@@ -148,6 +352,8 @@ export default {
     this.initBluetooth();
   },
   onUnload() {
+    this.stopWifiPolling();
+    if (this.modeFlipTimer) clearTimeout(this.modeFlipTimer);
     this.closeBluetooth();
   },
   methods: {
@@ -262,73 +468,180 @@ export default {
         success: (res) => {
           uni.hideLoading();
           this.isConnected = true;
-          this.statusText = '物理直连已就绪';
+          this.statusText = '蓝牙已连接，正在读取服务...';
+          this.bleRxBuffer = '';
           uni.showToast({ title: '蓝牙已接管！', icon: 'success' });
-          
-          // 🔴 1. 监听意外断开
-          uni.onBLEConnectionStateChange((stateRes) => {
-            if (!stateRes.connected) {
-              this.isConnected = false;
-              this.statusText = '蓝牙意外断开';
-              this.batteryLevel = '--'; // 断线时立刻清空电量
-              uni.showToast({ title: '连接已断开', icon: 'none' });
-            }
-          });
-
-          // 🔴 2. 开启全时监听：接收单片机发来的任何数据（包括电量）
-          uni.onBLECharacteristicValueChange((characteristic) => {
-            // 匹配电池服务特征值 (2A19)
-            if (characteristic.characteristicId.toUpperCase().includes('2A19')) {
-              let view = new DataView(characteristic.value);
-              this.batteryLevel = view.getUint8(0);
-              console.log('⚡ 收到灵眸实时电量:', this.batteryLevel + '%');
-            }
-          });
-
-		// 🔴 3. 动态跨平台蓝牙订阅流程 (修复 iOS/Android UUID 差异)
-          setTimeout(() => {
-            uni.getBLEDeviceServices({
-              deviceId: this.deviceId,
-              success: (res) => {
-                // 动态匹配系统分配的真实电池 Service UUID
-                let realBatService = res.services.find(s => s.uuid.toUpperCase().includes('180F'));
-                if (!realBatService) return;
-
-                uni.getBLEDeviceCharacteristics({
-                  deviceId: this.deviceId,
-                  serviceId: realBatService.uuid,
-                  success: (cRes) => {
-                    // 动态匹配真实电池特征值 UUID
-                    let realBatChar = cRes.characteristics.find(c => c.uuid.toUpperCase().includes('2A19'));
-                    if (!realBatChar) return;
-
-                    // 开启电池电量变动通知订阅
-                    uni.notifyBLECharacteristicValueChange({
-                      deviceId: this.deviceId,
-                      serviceId: realBatService.uuid,
-                      characteristicId: realBatChar.uuid,
-                      state: true, 
-                      success: () => {
-                        // 订阅成功后，主动读取一次初始电量
-                        uni.readBLECharacteristicValue({
-                          deviceId: this.deviceId,
-                          serviceId: realBatService.uuid,
-                          characteristicId: realBatChar.uuid
-                        });
-                      }
-                    });
-                  }
-                });
-              }
-            });
-          }, 1500);
+          this.registerBleListeners();
+          setTimeout(() => { this.discoverLingMouService(); }, 350);
         },
         fail: (err) => {
           uni.hideLoading();
+          this.isConnected = false;
           this.statusText = '连接失败，请靠近设备';
           uni.showToast({ title: '连接失败', icon: 'none' });
         }
       });
+    },
+
+    registerBleListeners() {
+      if (!this.bleConnectionListenerReady) {
+        uni.onBLEConnectionStateChange((stateRes) => {
+          if (stateRes.deviceId && this.deviceId && stateRes.deviceId !== this.deviceId) return;
+          if (!stateRes.connected) {
+            this.isConnected = false;
+            this.wifiConnecting = false;
+            this.statusText = '蓝牙意外断开';
+            this.stopWifiPolling();
+            uni.showToast({ title: '连接已断开', icon: 'none' });
+          }
+        });
+        this.bleConnectionListenerReady = true;
+      }
+
+      if (!this.bleValueListenerReady) {
+        uni.onBLECharacteristicValueChange((characteristic) => {
+          if (!characteristic || !characteristic.value) return;
+          const characteristicId = (characteristic.characteristicId || '').toLowerCase();
+          if (characteristicId !== this.txCharId.toLowerCase() && !characteristicId.endsWith('a9')) return;
+          this.consumeBlePayload(this.decodeBleValue(characteristic.value));
+        });
+        this.bleValueListenerReady = true;
+      }
+    },
+
+    discoverLingMouService() {
+      uni.getBLEDeviceServices({
+        deviceId: this.deviceId,
+        success: (res) => {
+          const target = (res.services || []).find((service) => {
+            const uuid = (service.uuid || '').toLowerCase();
+            return uuid === this.serviceId.toLowerCase() || uuid.includes('4fafc201');
+          });
+          if (!target) {
+            this.statusText = '未找到 LingMou 控制服务';
+            return;
+          }
+          this.serviceId = target.uuid;
+          uni.getBLEDeviceCharacteristics({
+            deviceId: this.deviceId,
+            serviceId: target.uuid,
+            success: (cRes) => {
+              const characteristics = cRes.characteristics || [];
+              const writeChar = characteristics.find((item) => {
+                const uuid = (item.uuid || '').toLowerCase();
+                return uuid === this.charId.toLowerCase() || uuid.endsWith('a8') || item.properties && (item.properties.write || item.properties.writeNoResponse);
+              });
+              const notifyChar = characteristics.find((item) => {
+                const uuid = (item.uuid || '').toLowerCase();
+                return uuid === this.txCharId.toLowerCase() || uuid.endsWith('a9') || item.properties && (item.properties.notify || item.properties.indicate);
+              });
+
+              if (writeChar) this.charId = writeChar.uuid;
+              if (!notifyChar) {
+                this.statusText = '未找到遥测通知特征';
+                return;
+              }
+              this.txCharId = notifyChar.uuid;
+              this.enableTelemetryNotify(target.uuid, notifyChar.uuid);
+            },
+            fail: () => { this.statusText = '读取 LingMou 特征失败'; }
+          });
+        },
+        fail: () => { this.statusText = '读取蓝牙服务失败'; }
+      });
+    },
+
+    enableTelemetryNotify(serviceId, characteristicId) {
+      uni.notifyBLECharacteristicValueChange({
+        deviceId: this.deviceId,
+        serviceId,
+        characteristicId,
+        state: true,
+        success: () => {
+          this.statusText = '物理直连已就绪';
+          this.sendBLECommand(`TIME=${Math.floor(Date.now() / 1000)}`, () => {
+            setTimeout(() => this.sendBLECommand('GET_STATUS'), 90);
+          });
+          uni.readBLECharacteristicValue({ deviceId: this.deviceId, serviceId, characteristicId });
+        },
+        fail: () => { this.statusText = '通知订阅失败，可继续使用控制功能'; }
+      });
+    },
+
+    decodeBleValue(value) {
+      const bytes = new Uint8Array(value);
+      if (typeof TextDecoder !== 'undefined') {
+        try { return new TextDecoder('utf-8').decode(bytes); } catch (e) { /* fallback below */ }
+      }
+      let result = '';
+      for (let i = 0; i < bytes.length; i++) result += String.fromCharCode(bytes[i]);
+      return result;
+    },
+
+    consumeBlePayload(payload) {
+      if (!payload) return;
+      this.bleRxBuffer += payload;
+      let start = this.bleRxBuffer.indexOf('{');
+      while (start >= 0) {
+        let depth = 0;
+        let inString = false;
+        let escaped = false;
+        let end = -1;
+        for (let i = start; i < this.bleRxBuffer.length; i++) {
+          const ch = this.bleRxBuffer[i];
+          if (escaped) { escaped = false; continue; }
+          if (ch === '\\' && inString) { escaped = true; continue; }
+          if (ch === '"') { inString = !inString; continue; }
+          if (inString) continue;
+          if (ch === '{') depth++;
+          if (ch === '}') {
+            depth--;
+            if (depth === 0) { end = i; break; }
+          }
+        }
+        if (end < 0) {
+          if (start > 0) this.bleRxBuffer = this.bleRxBuffer.substring(start);
+          break;
+        }
+        const frame = this.bleRxBuffer.substring(start, end + 1);
+        this.bleRxBuffer = this.bleRxBuffer.substring(end + 1);
+        try { this.handleBlePayload(JSON.parse(frame)); } catch (e) { console.warn('BLE 数据解析失败:', frame); }
+        start = this.bleRxBuffer.indexOf('{');
+      }
+      if (this.bleRxBuffer.length > 1024) this.bleRxBuffer = this.bleRxBuffer.slice(-512);
+    },
+
+    handleBlePayload(data) {
+      if (!data || typeof data !== 'object') return;
+      if (data.telemetry && typeof data.telemetry === 'object') {
+        this.handleBlePayload(data.telemetry);
+      }
+      if (Object.prototype.hasOwnProperty.call(data, 't') || Object.prototype.hasOwnProperty.call(data, 'h')) {
+        this.telemetry = {
+          temperature: data.t === null ? null : Number(data.t),
+          humidity: data.h === null ? null : Number(data.h),
+          aht: Number(data.aht || 0),
+          time: data.time || '--:--:--',
+          wifi: Number(data.wifi || 0)
+        };
+        this.telemetrySource = this.wifiConnected ? 'WiFi' : 'BLE';
+      }
+      if (data.type === 'wifi') {
+        this.wifiConnected = Number(data.ok) === 1 && data.state !== 'connecting' ? true : this.wifiConnected;
+        this.wifiConnecting = data.state === 'connecting' || (data.ok === 1 && !data.ip);
+        if (data.ip) {
+          this.wifiIp = data.ip;
+          this.wifiConnecting = false;
+          this.startWifiPolling();
+        }
+        if (data.ok === 0) {
+          this.wifiConnected = false;
+          this.wifiConnecting = false;
+        }
+      }
+      if (data.wifi !== undefined) this.wifiConnected = Number(data.wifi) === 1;
+      if (data.ip) this.wifiIp = data.ip;
+      if (data.wifi === 1 && this.wifiIp) this.startWifiPolling();
     },
 
     disconnectBle() {
@@ -338,7 +651,8 @@ export default {
           success: () => {
             this.isConnected = false;
             this.statusText = '蓝牙已断开';
-            this.batteryLevel = '--';
+            this.wifiConnecting = false;
+            this.stopWifiPolling();
           }
         });
       }
@@ -349,20 +663,121 @@ export default {
       uni.closeBluetoothAdapter();
     },
 
+    toggleMode() {
+      this.activeMode = this.activeMode === 'eye' ? 'info' : 'eye';
+    },
+
+    openWifiDrawer() {
+      this.wifiForm.ssid = this.wifiSsid;
+      this.wifiForm.password = '';
+      this.wifiDrawerVisible = true;
+    },
+
+    closeWifiDrawer() {
+      if (!this.wifiConfigSaving) this.wifiDrawerVisible = false;
+    },
+
+    encodeUtf8(text) {
+      if (typeof TextEncoder !== 'undefined') return Array.from(new TextEncoder().encode(text));
+      const encoded = unescape(encodeURIComponent(text));
+      const bytes = [];
+      for (let i = 0; i < encoded.length; i++) bytes.push(encoded.charCodeAt(i));
+      return bytes;
+    },
+
+    splitUtf8Text(text, maxBytes) {
+      const chunks = [];
+      let current = '';
+      for (const character of text) {
+        const candidate = current + character;
+        if (current && this.encodeUtf8(candidate).length > maxBytes) {
+          chunks.push(current);
+          current = character;
+        } else {
+          current = candidate;
+        }
+      }
+      if (current || !chunks.length) chunks.push(current);
+      return chunks;
+    },
+
+    sendWifiField(prefix, appendPrefix, value, done) {
+      // 预留 BLE ATT 包头空间，兼容未完成 MTU 协商的手机。
+      const chunks = this.splitUtf8Text(value || '', 8);
+      const commands = chunks.map((chunk, index) => `${index === 0 ? prefix : appendPrefix}${chunk}`);
+      let index = 0;
+      const next = () => {
+        if (index >= commands.length) { if (done) done(); return; }
+        this.sendBLECommand(commands[index++], () => setTimeout(next, 90));
+      };
+      next();
+    },
+
+    saveWifiConfig() {
+      if (!this.isConnected) {
+        uni.showToast({ title: '请先连接 BLE', icon: 'none' });
+        return;
+      }
+      if (!this.wifiForm.ssid.trim()) {
+        uni.showToast({ title: '请输入 WiFi 名称', icon: 'none' });
+        return;
+      }
+      this.wifiConfigSaving = true;
+      this.wifiSsid = this.wifiForm.ssid.trim();
+      this.wifiConnecting = true;
+      this.sendWifiField('WIFI_SSID=', 'WIFI_SSID+', this.wifiSsid, () => {
+        this.sendWifiField('WIFI_PASS=', 'WIFI_PASS+', this.wifiForm.password, () => {
+          this.sendBLECommand('WIFI_CONNECT', () => {
+            this.wifiConfigSaving = false;
+            this.wifiDrawerVisible = false;
+            uni.showToast({ title: '已发送 WiFi 配置', icon: 'success' });
+          });
+        });
+      });
+    },
+
+    startWifiPolling() {
+      if (!this.wifiIp || this.wifiPollTimer) return;
+      this.pollWifiTelemetry();
+      this.wifiPollTimer = setInterval(() => this.pollWifiTelemetry(), 3000);
+    },
+
+    stopWifiPolling() {
+      if (this.wifiPollTimer) clearInterval(this.wifiPollTimer);
+      this.wifiPollTimer = null;
+    },
+
+    pollWifiTelemetry() {
+      if (!this.wifiIp) return;
+      uni.request({
+        url: `http://${this.wifiIp}/api/telemetry`,
+        timeout: 2500,
+        success: (res) => {
+          if (!res.data || typeof res.data !== 'object') return;
+          this.wifiConnected = true;
+          this.telemetrySource = 'WiFi';
+          this.handleBlePayload(res.data);
+        },
+        fail: () => {
+          this.telemetrySource = 'BLE';
+        }
+      });
+    },
+
     // ==========================================
     // 🧬 极简 MTU 发射协议 (短包高速传输)
     // ==========================================
-	sendBLECommand(cmdString) {
+    sendBLECommand(cmdString, onComplete) {
       if (!this.isConnected) {
         uni.showToast({ title: '蓝牙未连接', icon: 'none' });
+        if (onComplete) onComplete();
         return;
       }
       
-      let buffer = new ArrayBuffer(cmdString.length);
-      let dataView = new Uint8Array(buffer);
-      for (let i = 0; i < cmdString.length; i++) {
-        dataView[i] = cmdString.charCodeAt(i);
-      }
+      const encoded = this.encodeUtf8(cmdString);
+      const buffer = new ArrayBuffer(encoded.length);
+      const dataView = new Uint8Array(buffer);
+      dataView.set(encoded);
 
       // 🔴 使用你原来定义的 UUID 变量即可，因为这是我们自定义的 128 位 UUID，不会有平台差异
       uni.writeBLECharacteristicValue({
@@ -371,8 +786,14 @@ export default {
         characteristicId: this.charId,
         value: buffer,
         writeType: 'writeNoResponse', // 🚀 极速盲发模式，极大降低通信延迟
-        success: () => { console.log('指令击中:', cmdString); },
-        fail: (err) => { console.error('指令发射失败:', err); }
+        success: () => {
+          if (!/^WIFI_PASS/.test(cmdString)) console.log('指令击中:', cmdString);
+          if (onComplete) onComplete();
+        },
+        fail: (err) => {
+          console.error('指令发射失败:', err);
+          if (onComplete) onComplete();
+        }
       });
     },
     
@@ -600,5 +1021,124 @@ page { background-color: transparent; height: 100%; }
 .chip-grid { display: flex; flex-wrap: wrap; gap: 10px; }
 .chip-btn { flex: 1 1 auto; background-color: var(--btn-bg); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 12px 6px 12px 6px; font-size: 13px; padding: 8px 16px; margin: 0; transition: all 0.2s;}
 .chip-btn::after { display: none; }
-.chip-btn:active { background: rgba(34, 211, 238, 0.15); transform: scale(0.95); border-color: var(--accent-color); color: var(--accent-color); box-shadow: 0 0 15px rgba(34, 211, 238, 0.3);}
+  .chip-btn:active { background: rgba(34, 211, 238, 0.15); transform: scale(0.95); border-color: var(--accent-color); color: var(--accent-color); box-shadow: 0 0 15px rgba(34, 211, 238, 0.3);}
+
+/* =========================================
+   🪞 新版主布局：2/3 连接区 + 1/3 模式区
+   ========================================= */
+.container { max-width: 720px; }
+.top-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(150px, 1fr); gap: 16px; align-items: stretch; margin-bottom: 18px; }
+.top-grid .status-card-wide { grid-column: auto; min-height: 154px; box-sizing: border-box; }
+.link-status-pills { display: flex; align-items: center; gap: 8px; }
+.link-pill { display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; border: 1px solid var(--border-color); border-radius: 999px; color: var(--text-sub); font-size: 10px; letter-spacing: 0.6px; background: var(--btn-bg); }
+.wifi-pill { cursor: pointer; transition: transform 0.25s ease, border-color 0.25s ease; }
+.wifi-pill:active { transform: translateY(2px) scale(0.97); border-color: var(--accent-color); }
+.mini-status-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; transition: all 0.35s ease; }
+.dot-pending { background: #f59e0b; box-shadow: 0 0 9px rgba(245, 158, 11, 0.55); }
+.status-meta { display: block; margin-top: 5px; color: var(--accent-color); font-size: 10px; letter-spacing: 0.5px; }
+
+/* 模式卡片：整张卡片可点击，图标像主题按钮一样切换 */
+.mode-toggle-card { min-height: 154px; padding: 18px 16px; border-radius: 12px 30px 12px 30px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; cursor: pointer; overflow: hidden; transition: transform 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease; }
+.mode-toggle-card:active { transform: translateY(2px) scale(0.985); }
+.mode-icon-scene { width: 58px; height: 58px; position: relative; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: linear-gradient(145deg, rgba(34, 211, 238, 0.2), rgba(8, 145, 178, 0.08)); border: 1px solid rgba(34, 211, 238, 0.28); box-shadow: 0 8px 20px var(--shadow-color), inset 0 0 16px rgba(34, 211, 238, 0.08); margin-bottom: 9px; }
+.mode-icon-flipper { width: 30px; height: 30px; position: relative; transform-style: preserve-3d; transition: transform 0.55s cubic-bezier(0.2, 0.8, 0.2, 1); z-index: 2; }
+.mode-icon-flipper.is-info { transform: rotateY(180deg); }
+.mode-icon-face { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--accent-color); font-size: 27px; line-height: 1; backface-visibility: hidden; -webkit-backface-visibility: hidden; text-shadow: 0 0 12px rgba(34, 211, 238, 0.45); }
+.mode-icon-info { transform: rotateY(180deg); }
+.mode-icon-orbit { position: absolute; inset: 7px; border: 1px solid rgba(34, 211, 238, 0.35); border-radius: 50%; transform: rotate(-22deg) scaleX(1.25); opacity: 0.7; animation: mode-orbit-spin 7s linear infinite; }
+@keyframes mode-orbit-spin { from { transform: rotate(-22deg) scaleX(1.25); } to { transform: rotate(338deg) scaleX(1.25); } }
+.mode-kicker { color: var(--text-sub); font-size: 9px; letter-spacing: 2px; margin-bottom: 4px; }
+.mode-label { color: var(--text-main); font-size: 15px; font-weight: 700; }
+.mode-hint { color: var(--text-sub); font-size: 10px; margin-top: 5px; }
+
+/* =========================================
+   🔄 主卡片翻转面：保留不规则留白和交替圆角
+   ========================================= */
+.flip-stage { width: 100%; perspective: 1500px; }
+.flip-inner { display: grid; width: 100%; transform-style: preserve-3d; transition: transform 0.68s cubic-bezier(0.2, 0.75, 0.2, 1); }
+.flip-stage.is-info .flip-inner { transform: rotateY(180deg); }
+.mode-face { grid-area: 1 / 1; width: 100%; min-width: 0; box-sizing: border-box; padding: 18px; backface-visibility: hidden; -webkit-backface-visibility: hidden; overflow: hidden; }
+.eye-face, .info-face { border-radius: 12px 32px 12px 32px; }
+.info-face { transform: rotateY(180deg); }
+.face-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin: 3px 4px 18px; }
+.face-kicker { display: block; color: var(--accent-color); font-size: 10px; font-weight: 700; letter-spacing: 2.2px; }
+.face-title { display: block; color: var(--text-main); font-size: 20px; font-weight: 700; margin-top: 5px; }
+.face-state { padding-top: 4px; color: var(--text-sub); font-size: 10px; letter-spacing: 1.5px; }
+.face-section { background: rgba(255, 255, 255, 0.26); border: 1px solid var(--border-color); box-shadow: 0 8px 24px var(--shadow-color); }
+.dark-theme .face-section { background: rgba(15, 23, 42, 0.24); }
+.command-section { margin: 0 0 19px 0; padding: 20px 12px 18px; border-radius: 12px 28px 12px 28px; }
+.command-grid { display: flex; align-items: flex-start; justify-content: space-evenly; gap: 8px; }
+.tracking-section { margin: 0 19px 21px 0; padding: 19px 20px 16px; border-radius: 30px 12px 30px 12px; }
+.emotion-section { margin: 0 0 0 17px; padding: 19px 20px 20px; border-radius: 12px 30px 12px 30px; }
+.section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.section-heading .card-title { margin-bottom: 0; }
+.section-caption { color: var(--text-sub); font-size: 10px; letter-spacing: 0.6px; }
+.axis-value { width: 27px; color: var(--text-sub); font-size: 11px; text-align: right; font-variant-numeric: tabular-nums; }
+.tracking-section .slider-row { margin-bottom: 13px; }
+.tracking-section .slider-row:last-child { margin-bottom: 0; }
+
+/* 信息卡片：上下两行指标，保持充分留白 */
+.info-heading { margin-bottom: 13px; }
+.live-badge { display: inline-flex; align-items: center; gap: 6px; color: var(--text-sub); font-size: 10px; letter-spacing: 0.7px; padding-top: 4px; white-space: nowrap; }
+.info-time-row { display: flex; align-items: baseline; justify-content: space-between; margin: 0 16px 19px 2px; padding-bottom: 14px; border-bottom: 1px solid var(--border-color); }
+.info-time { color: var(--text-main); font-size: 31px; font-weight: 300; letter-spacing: 1px; font-variant-numeric: tabular-nums; }
+.info-time-note { color: var(--text-sub); font-size: 10px; }
+.info-metric { padding: 22px 20px 19px; background: rgba(255, 255, 255, 0.26); border: 1px solid var(--border-color); box-shadow: 0 10px 28px var(--shadow-color); }
+.dark-theme .info-metric { background: rgba(15, 23, 42, 0.24); }
+.metric-temperature { margin: 0 18px 0 0; border-radius: 30px 12px 30px 12px; }
+.metric-humidity { margin: 21px 0 0 18px; border-radius: 12px 30px 12px 30px; }
+.metric-topline { display: flex; align-items: center; gap: 13px; min-height: 54px; }
+.metric-icon { width: 37px; height: 37px; border-radius: 13px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: var(--btn-bg); border: 1px solid var(--border-color); position: relative; }
+.thermometer-mark:before { content: ''; width: 8px; height: 19px; border: 2px solid #fb923c; border-radius: 8px; position: absolute; top: 6px; left: 13px; }
+.thermometer-mark:after { content: ''; width: 13px; height: 13px; border-radius: 50%; background: #fb923c; position: absolute; bottom: 5px; left: 10.5px; box-shadow: 0 0 10px rgba(251, 146, 60, 0.35); }
+.thermometer-mark > view { width: 4px; height: 14px; border-radius: 4px; background: #fb923c; position: absolute; left: 15px; top: 9px; z-index: 2; }
+.droplet-mark:before { content: ''; width: 17px; height: 22px; background: rgba(34, 211, 238, 0.18); border: 2px solid #22d3ee; border-radius: 60% 60% 65% 65%; transform: rotate(45deg) scale(0.72); position: absolute; top: 7px; left: 9px; }
+.droplet-mark:after { content: ''; width: 7px; height: 7px; border-radius: 50%; background: #22d3ee; position: absolute; top: 14px; left: 15px; box-shadow: 0 0 10px rgba(34, 211, 238, 0.4); }
+.metric-copy { min-width: 0; flex: 1; }
+.metric-label { display: block; color: var(--text-sub); font-size: 10px; font-weight: 700; letter-spacing: 1.5px; }
+.metric-note { display: block; color: var(--text-sub); font-size: 10px; margin-top: 5px; }
+.metric-value { display: flex; align-items: baseline; gap: 4px; flex-shrink: 0; }
+.metric-number { color: var(--text-main); font-size: 29px; font-weight: 300; font-variant-numeric: tabular-nums; }
+.metric-unit { color: var(--text-sub); font-size: 12px; }
+.metric-track { height: 4px; background: var(--border-color); border-radius: 99px; overflow: hidden; margin-top: 17px; }
+.metric-fill { height: 100%; border-radius: inherit; transition: width 0.6s ease; }
+.temp-fill { background: linear-gradient(90deg, #fbbf24, #fb923c); }
+.humidity-fill { background: linear-gradient(90deg, #38bdf8, #22d3ee); }
+.info-footer { display: flex; justify-content: space-between; gap: 12px; margin: 21px 4px 2px; color: var(--text-sub); font-size: 10px; letter-spacing: 0.6px; }
+
+/* =========================================
+   🛜 WiFi 底部抽屉
+   ========================================= */
+.drawer-layer { position: fixed; inset: 0; z-index: 100000; display: flex; align-items: flex-end; background: rgba(2, 6, 23, 0.36); animation: drawer-fade-in 0.25s ease-out; }
+.wifi-drawer { width: 100%; box-sizing: border-box; padding: 12px 22px 24px; border-radius: 30px 30px 0 0; background: var(--bg-color); color: var(--text-main); box-shadow: 0 -12px 40px rgba(15, 23, 42, 0.22); animation: drawer-rise-in 0.35s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.drawer-handle { width: 42px; height: 4px; margin: 0 auto 20px; border-radius: 99px; background: var(--border-color); }
+.drawer-heading { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px; }
+.drawer-title { display: block; color: var(--text-main); font-size: 24px; font-weight: 700; margin-top: 4px; }
+.drawer-close { color: var(--text-sub); font-size: 28px; line-height: 20px; padding: 5px 7px; }
+.drawer-field { margin-bottom: 14px; }
+.drawer-label { display: block; color: var(--text-sub); font-size: 11px; margin: 0 0 7px 3px; }
+.drawer-input { width: 100%; height: 44px; box-sizing: border-box; padding: 0 14px; border: 1px solid var(--border-color); border-radius: 12px 22px 12px 22px; background: var(--btn-bg); color: var(--text-main); font-size: 13px; }
+.drawer-status-row { display: flex; align-items: center; gap: 8px; min-height: 22px; color: var(--text-sub); font-size: 11px; }
+.drawer-ip { margin-left: auto; color: var(--accent-color); font-variant-numeric: tabular-nums; }
+.drawer-actions { display: flex; gap: 12px; margin-top: 18px; }
+.drawer-actions button { flex: 1; height: 42px; margin: 0; border-radius: 14px 24px 14px 24px; font-size: 13px; }
+.drawer-actions button::after { display: none; }
+.drawer-secondary-btn { color: var(--text-main); background: var(--btn-bg); border: 1px solid var(--border-color); }
+.drawer-primary-btn { color: #fff; background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end)); border: none; box-shadow: 0 6px 18px rgba(8, 145, 178, 0.25); }
+.drawer-primary-btn[disabled] { opacity: 0.55; }
+.drawer-note { display: block; margin-top: 14px; color: var(--text-sub); font-size: 10px; text-align: center; }
+@keyframes drawer-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes drawer-rise-in { from { opacity: 0; transform: translateY(28px); } to { opacity: 1; transform: translateY(0); } }
+
+@media (max-width: 560px) {
+  .top-grid { grid-template-columns: minmax(0, 1fr); }
+  .top-grid .status-card-wide, .mode-toggle-card { min-height: 142px; }
+  .mode-toggle-card { border-radius: 28px 12px 28px 12px; }
+  .face-title { font-size: 18px; }
+  .metric-topline { gap: 9px; }
+  .metric-number { font-size: 25px; }
+  .info-time { font-size: 27px; }
+  .emotion-section { margin-left: 0; }
+  .tracking-section { margin-right: 0; }
+}
 </style>
