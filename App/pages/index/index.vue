@@ -50,9 +50,9 @@
                 <view :class="['mini-status-dot', isConnected ? 'dot-online' : 'dot-offline']"></view>
                 <text>BLE</text>
               </view>
-              <view :class="['link-pill', 'wifi-pill', wifiConnected ? 'wifi-online' : (wifiConnecting ? 'wifi-pending' : 'wifi-idle')]" @click.stop="openWifiDrawer">
+              <view class="link-pill wifi-pill" @click.stop="openWifiDrawer">
                 <view class="wifi-signal-icon"><view></view><view></view><view></view></view>
-                <text>{{ wifiConnected ? 'WiFi 已连接' : (wifiConnecting ? 'WiFi 连接中' : 'WiFi 配置') }}</text>
+                <text>WiFi 配置</text>
               </view>
             </view>
           </view>
@@ -121,12 +121,12 @@
               </view>
               <view class="slider-row">
                 <text class="axis">X</text>
-                <slider class="cyber-slider" :value="lookX" min="-1" max="1" step="0.1" @change="onLookXChange" :activeColor="isDarkMode ? '#c6a36a' : '#0891b2'" block-size="16" />
+                <slider class="cyber-slider" :value="lookX" min="-1" max="1" step="0.1" @change="onLookXChange" :activeColor="isDarkMode ? '#58A6FF' : '#0891b2'" block-size="16" />
                 <text class="axis-value">{{ Number(lookX).toFixed(1) }}</text>
               </view>
               <view class="slider-row">
                 <text class="axis">Y</text>
-                <slider class="cyber-slider" :value="lookY" min="-1" max="1" step="0.1" @change="onLookYChange" :activeColor="isDarkMode ? '#c6a36a' : '#0891b2'" block-size="16" />
+                <slider class="cyber-slider" :value="lookY" min="-1" max="1" step="0.1" @change="onLookYChange" :activeColor="isDarkMode ? '#58A6FF' : '#0891b2'" block-size="16" />
                 <text class="axis-value">{{ Number(lookY).toFixed(1) }}</text>
               </view>
             </view>
@@ -893,18 +893,22 @@ export default {
 }
 
 .dark-theme {
-  --bg-color: #0f172a;          
-  --card-bg: rgba(30, 41, 59, 0.6); 
-  --text-main: #f8fafc;         
-  --text-sub: #94a3b8;          
-  --border-color: rgba(51, 65, 85, 0.6);      
-  --btn-bg: rgba(51, 65, 85, 0.5);            
-  --btn-hover: rgba(71, 85, 105, 0.8);         
-  --accent-color: #22d3ee;      
-  --gradient-start: #cbd5e1;    
-  --gradient-end: #22d3ee;      
-  --shadow-color: rgba(0, 0, 0, 0.3);
-  --orb-color: rgba(34, 211, 238, 0.08);
+  --color-black: #0D1117;
+  --color-carbon: #161B22;
+  --color-link-blue: #58A6FF;
+  --color-text-gray: #C9D1D9;
+  --bg-color: #0D1117;
+  --card-bg: rgba(22, 27, 34, 0.92);
+  --text-main: #C9D1D9;
+  --text-sub: #8B949E;
+  --border-color: rgba(201, 209, 217, 0.14);
+  --btn-bg: #161B22;
+  --btn-hover: #21262D;
+  --accent-color: #58A6FF;
+  --gradient-start: #161B22;
+  --gradient-end: #58A6FF;
+  --shadow-color: rgba(0, 0, 0, 0.46);
+  --orb-color: rgba(88, 166, 255, 0.08);
 }
 
 /* =========================================
@@ -1185,39 +1189,44 @@ page { background-color: transparent; height: 100%; }
 }
 
 /* =========================================
-   🌘 黑夜模式：石墨、暖金与低饱和青灰
+   🌘 黑夜模式：GitHub Dim / Blue Slate
    ========================================= */
-.dark-theme {
-  --bg-color: #202226;
-  --card-bg: rgba(46, 49, 53, 0.9);
-  --text-main: #f0ede6;
-  --text-sub: #aaa79f;
-  --border-color: rgba(239, 232, 216, 0.13);
-  --btn-bg: #2d3136;
-  --btn-hover: #3a3f45;
-  --accent-color: #c6a36a;
-  --gradient-start: #354149;
-  --gradient-end: #8a6d4d;
-  --shadow-color: rgba(0, 0, 0, 0.34);
-  --orb-color: rgba(190, 153, 94, 0.065);
-}
-.dark-theme .night-bg { background: linear-gradient(to bottom, #292c30, #17191c); }
-.dark-theme .dot-online { background-color: #98b58a; box-shadow: 0 0 8px rgba(152, 181, 138, 0.42); }
-.dark-theme .dot-offline { background-color: #c77870; box-shadow: 0 0 8px rgba(199, 120, 112, 0.34); }
-.dark-theme .dot-pending { background: #c59b5e; box-shadow: 0 0 8px rgba(197, 155, 94, 0.36); }
-.dark-theme .ble-scan-btn { background: linear-gradient(135deg, #354149, #866947); box-shadow: 0 5px 15px rgba(122, 94, 63, 0.25); }
-.dark-theme .mode-icon-scene { background: linear-gradient(145deg, rgba(198, 163, 106, 0.18), rgba(92, 112, 116, 0.12)); border-color: rgba(198, 163, 106, 0.34); box-shadow: 0 8px 20px var(--shadow-color), inset 0 0 16px rgba(198, 163, 106, 0.06); }
-.dark-theme .mode-icon-face { color: var(--accent-color); text-shadow: 0 0 10px rgba(198, 163, 106, 0.25); }
-.dark-theme .mode-icon-orbit { border-color: rgba(198, 163, 106, 0.42); }
-.dark-theme .action-icon-btn:active .icon-wrapper { background: rgba(198, 163, 106, 0.13); border-color: rgba(198, 163, 106, 0.55); box-shadow: 0 0 17px rgba(198, 163, 106, 0.23), inset 0 0 10px rgba(198, 163, 106, 0.12); }
-.dark-theme .action-icon-btn:active .btn-label, .dark-theme .action-icon-btn.btn-active .btn-label { color: var(--accent-color); text-shadow: 0 0 8px rgba(198, 163, 106, 0.28); }
-.dark-theme .action-icon-btn.btn-active .icon-wrapper { background: rgba(198, 163, 106, 0.15); border-color: rgba(198, 163, 106, 0.62); box-shadow: 0 0 20px rgba(198, 163, 106, 0.24), inset 0 0 12px rgba(198, 163, 106, 0.14); }
-.dark-theme .chip-btn:active { background: rgba(198, 163, 106, 0.13); border-color: var(--accent-color); color: var(--accent-color); box-shadow: 0 0 12px rgba(198, 163, 106, 0.2); }
-.dark-theme .drawer-primary-btn { background: linear-gradient(135deg, #354149, #866947); box-shadow: 0 6px 18px rgba(122, 94, 63, 0.25); }
-.dark-theme .wifi-drawer { background: #26292d; }
-.dark-theme .droplet-mark:before { background: rgba(126, 163, 157, 0.16); border-color: #86a9a2; }
-.dark-theme .droplet-mark:after { background: #86a9a2; box-shadow: 0 0 8px rgba(134, 169, 162, 0.32); }
-.dark-theme .humidity-fill { background: linear-gradient(90deg, #668b86, #9ab0a0); }
+.dark-theme .night-bg { background: linear-gradient(135deg, #0D1117, #161B22); }
+.dark-theme .splash-screen { background-color: #0D1117; }
+.dark-theme .aura-glow { background: radial-gradient(ellipse, rgba(88, 166, 255, 0.22), transparent 70%); }
+.dark-theme .pear-shape-outline { border-color: rgba(88, 166, 255, 0.78); box-shadow: 0 0 25px rgba(88, 166, 255, 0.34), inset 0 0 30px rgba(31, 111, 235, 0.32); }
+.dark-theme .glass-pupil { background: radial-gradient(circle at 50% 20%, #0D1117 10%, #1F6FEB 58%, #58A6FF 100%); box-shadow: inset 0 -10px 20px rgba(201, 209, 217, 0.42), inset 0 10px 15px rgba(0, 0, 0, 0.72), 0 0 22px rgba(88, 166, 255, 0.32); }
+.dark-theme .tail-left { background: linear-gradient(270deg, rgba(88, 166, 255, 0.62), transparent); box-shadow: -5px 0 10px rgba(88, 166, 255, 0.28); }
+.dark-theme .tail-right { background: linear-gradient(90deg, rgba(88, 166, 255, 0.62), transparent); box-shadow: 5px 0 10px rgba(88, 166, 255, 0.28); }
+.dark-theme .dot-online { background-color: #3FB950; box-shadow: 0 0 8px rgba(63, 185, 80, 0.42); }
+.dark-theme .dot-offline { background-color: #F85149; box-shadow: 0 0 8px rgba(248, 81, 73, 0.34); }
+.dark-theme .dot-pending { background: #D29922; box-shadow: 0 0 8px rgba(210, 153, 34, 0.36); }
+.dark-theme .ble-scan-btn { background: linear-gradient(135deg, #21262D, #58A6FF); box-shadow: 0 5px 16px rgba(88, 166, 255, 0.24); }
+.dark-theme .mode-icon-scene { background: linear-gradient(145deg, rgba(88, 166, 255, 0.18), rgba(22, 27, 34, 0.9)); border-color: rgba(88, 166, 255, 0.38); box-shadow: 0 8px 20px var(--shadow-color), inset 0 0 16px rgba(88, 166, 255, 0.08); }
+.dark-theme .mode-icon-face { color: var(--accent-color); text-shadow: 0 0 10px rgba(88, 166, 255, 0.32); }
+.dark-theme .mode-icon-orbit { border-color: rgba(88, 166, 255, 0.46); }
+.dark-theme .action-icon-btn:active .icon-wrapper { background: rgba(88, 166, 255, 0.13); border-color: rgba(88, 166, 255, 0.58); box-shadow: 0 0 17px rgba(88, 166, 255, 0.24), inset 0 0 10px rgba(88, 166, 255, 0.13); }
+.dark-theme .action-icon-btn:active .btn-label, .dark-theme .action-icon-btn.btn-active .btn-label { color: var(--accent-color); text-shadow: 0 0 8px rgba(88, 166, 255, 0.32); }
+.dark-theme .action-icon-btn.btn-active .icon-wrapper { background: rgba(88, 166, 255, 0.16); border-color: rgba(88, 166, 255, 0.68); box-shadow: 0 0 20px rgba(88, 166, 255, 0.28), inset 0 0 12px rgba(88, 166, 255, 0.16); }
+.dark-theme .chip-btn:active { background: rgba(88, 166, 255, 0.14); border-color: var(--accent-color); color: var(--accent-color); box-shadow: 0 0 12px rgba(88, 166, 255, 0.22); }
+.dark-theme .drawer-primary-btn { background: linear-gradient(135deg, #21262D, #2381D9); box-shadow: 0 6px 18px rgba(88, 166, 255, 0.24); }
+.dark-theme .wifi-drawer { background: #0D1117; }
+.dark-theme .face-section, .dark-theme .info-metric { background: rgba(22, 27, 34, 0.78); }
+.dark-theme .drawer-input, .dark-theme .drawer-secondary-btn { background: #161B22; }
+.dark-theme .droplet-mark:before { background: rgba(88, 166, 255, 0.14); border-color: #58A6FF; }
+.dark-theme .droplet-mark:after { background: #58A6FF; box-shadow: 0 0 8px rgba(88, 166, 255, 0.34); }
+.dark-theme .humidity-fill { background: linear-gradient(90deg, #2F81F7, #58A6FF); }
+.dark-theme .blink-core { background: linear-gradient(145deg, #C9D1D9 0%, #58A6FF 56%, #1F6FEB 100%); box-shadow: 4px 6px 0 rgba(1, 4, 9, 0.42), inset 2px 2px 3px rgba(255, 255, 255, 0.38); }
+.dark-theme .blink-core:before { background: #0D1117; }
+.dark-theme .blink-core:after { background: #79C0FF; }
+.dark-theme .blink-spark { background: #58A6FF; box-shadow: 1px 2px 0 rgba(13, 17, 23, 0.5); }
+.dark-theme .mask-back { background: linear-gradient(145deg, #C9D1D9, #6E7681); box-shadow: 3px 4px 0 rgba(1, 4, 9, 0.42), inset 2px 2px 3px rgba(255, 255, 255, 0.25); }
+.dark-theme .mask-front { background: linear-gradient(145deg, #79C0FF, #1F6FEB); box-shadow: 3px 4px 0 rgba(1, 4, 9, 0.44), inset 2px 2px 3px rgba(255, 255, 255, 0.28); }
+.dark-theme .mask-face:before { background: #0D1117; box-shadow: 8px 0 0 #0D1117; }
+.dark-theme .mask-face:after { border-bottom-color: rgba(13, 17, 23, 0.82); }
+.dark-theme .icon-wander .wander-orbit { border-color: #8B949E; box-shadow: 0 3px 0 rgba(1, 4, 9, 0.42); }
+.dark-theme .icon-wander .wander-core { background: radial-gradient(circle at 32% 28%, #C9D1D9, #58A6FF 48%, #1F6FEB 100%); box-shadow: 3px 5px 0 rgba(1, 4, 9, 0.44), inset 2px 2px 3px rgba(255, 255, 255, 0.28); }
+.dark-theme .icon-wander .wander-arrow { border-left-color: #58A6FF; filter: drop-shadow(1px 2px 0 rgba(1, 4, 9, 0.48)); }
 
 /* =========================================
    🧊 3D 功能图标：灵瞬 / 幻相 / 游荡
@@ -1244,37 +1253,36 @@ page { background-color: transparent; height: 100%; }
 @keyframes mask-float { from { transform: rotate(-12deg) translate3d(0, 0, 7px); } to { transform: rotate(-7deg) translate3d(2px, -2px, 9px); } }
 @keyframes wander-spin { from { transform: rotateX(62deg) rotateZ(-22deg); } to { transform: rotateX(62deg) rotateZ(338deg); } }
 
-/* WiFi 按钮：连接状态、信号弧线与轻量呼吸反馈 */
-.wifi-pill { position: relative; overflow: hidden; }
-.wifi-pill:after { content: ''; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 25%, rgba(255,255,255,0.18) 50%, transparent 75%); transform: translateX(-125%); transition: transform 0.55s ease; }
-.wifi-pill:active:after, .wifi-pill.wifi-online:active:after { transform: translateX(125%); }
-.wifi-pill.wifi-pending { animation: wifi-breathe 1.8s ease-in-out infinite; }
-.wifi-pill.wifi-online { border-color: rgba(143, 174, 128, 0.48); color: #75926d; }
-.dark-theme .wifi-pill.wifi-online { color: #a7bb91; border-color: rgba(167, 187, 145, 0.38); }
-.dark-theme .wifi-pill.wifi-pending { color: #d0a86e; border-color: rgba(208, 168, 110, 0.42); }
+/* 顶部 WiFi 配置入口：恢复简洁胶囊样式，交互集中在配置抽屉 */
+.wifi-pill { color: var(--text-sub); background: var(--btn-bg); overflow: visible; transition: transform 0.22s ease, border-color 0.22s ease, color 0.22s ease; }
+.wifi-pill:active { transform: translateY(1px) scale(0.98); border-color: var(--border-color); }
 .wifi-signal-icon { width: 17px; height: 14px; position: relative; color: currentColor; flex-shrink: 0; }
-.wifi-signal-icon:before, .wifi-signal-icon:after { content: ''; position: absolute; left: 50%; border: 1.4px solid currentColor; border-left-color: transparent; border-bottom-color: transparent; border-radius: 100% 0 0 0; transform: translateX(-50%) rotate(-45deg); }
-.wifi-signal-icon:before { width: 15px; height: 15px; top: -3px; opacity: 0.42; }
-.wifi-signal-icon:after { width: 9px; height: 9px; top: 1px; opacity: 0.72; }
+.wifi-signal-icon:before, .wifi-signal-icon:after { content: ''; position: absolute; left: 50%; border: 1.5px solid currentColor; border-bottom: 0; border-radius: 50% 50% 0 0; transform: translateX(-50%); }
+.wifi-signal-icon:before { width: 16px; height: 10px; top: 0; opacity: 0.45; }
+.wifi-signal-icon:after { width: 9px; height: 6px; top: 4px; opacity: 0.75; }
 .wifi-signal-icon view { position: absolute; left: 50%; bottom: 0; width: 3px; height: 3px; border-radius: 50%; background: currentColor; transform: translateX(-50%); }
 .wifi-signal-icon view:nth-child(2), .wifi-signal-icon view:nth-child(3) { display: none; }
-@keyframes wifi-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.025); } }
 
 /* 配网抽屉按钮和连接阶段 */
 .drawer-status-row { transition: color 0.3s ease; }
 .drawer-status-sending, .drawer-status-waiting { color: var(--accent-color); }
-.drawer-status-success { color: #7e9c72; }
-.drawer-status-error { color: #bd756c; }
-.drawer-primary-btn { display: flex; align-items: center; justify-content: center; gap: 8px; transition: transform 0.25s ease, filter 0.25s ease, background 0.3s ease; }
+.drawer-status-success { color: #3fb950; }
+.drawer-status-error { color: #f85149; }
+.drawer-primary-btn { position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; gap: 8px; transition: transform 0.25s ease, filter 0.25s ease, background 0.3s ease, box-shadow 0.3s ease; }
+.drawer-primary-btn:before { content: ''; position: absolute; inset: 0; background: linear-gradient(112deg, transparent 22%, rgba(255,255,255,0.28) 49%, transparent 74%); transform: translateX(-135%); transition: transform 0.65s ease; pointer-events: none; }
+.drawer-primary-btn:not([disabled]):hover:before, .drawer-primary-btn:not([disabled]):active:before { transform: translateX(135%); }
+.drawer-primary-btn > text, .drawer-primary-btn > view { position: relative; z-index: 1; }
 .drawer-primary-btn:not([disabled]):active { transform: translateY(2px) scale(0.985); filter: brightness(0.94); }
-.drawer-primary-btn.is-success { background: linear-gradient(135deg, #5f7d67, #8ea978); }
-.drawer-primary-btn.is-error { background: linear-gradient(135deg, #76514d, #b47268); }
+.drawer-primary-btn.is-loading { animation: config-button-pulse 1.15s ease-in-out infinite; }
+.drawer-primary-btn.is-success { background: linear-gradient(135deg, #238636, #3fb950); box-shadow: 0 7px 20px rgba(63, 185, 80, 0.22); }
+.drawer-primary-btn.is-error { background: linear-gradient(135deg, #8e3b36, #f85149); box-shadow: 0 7px 20px rgba(248, 81, 73, 0.18); }
 .button-spinner { width: 13px; height: 13px; border: 2px solid rgba(255,255,255,0.38); border-top-color: #fff; border-radius: 50%; animation: button-spin 0.75s linear infinite; }
 @keyframes button-spin { to { transform: rotate(360deg); } }
+@keyframes config-button-pulse { 0%, 100% { box-shadow: 0 6px 18px rgba(88, 166, 255, 0.2); } 50% { box-shadow: 0 8px 26px rgba(88, 166, 255, 0.42); } }
 .wifi-flow { display: flex; align-items: center; justify-content: center; margin-top: 19px; color: var(--text-sub); }
 .wifi-flow-step { display: flex; flex-direction: column; align-items: center; gap: 5px; font-size: 9px; letter-spacing: 0.7px; transition: color 0.3s ease; }
 .wifi-flow-step.is-done { color: var(--accent-color); }
 .flow-dot { width: 7px; height: 7px; border-radius: 50%; border: 1px solid var(--border-color); background: transparent; transition: all 0.3s ease; }
-.wifi-flow-step.is-done .flow-dot { background: var(--accent-color); border-color: var(--accent-color); box-shadow: 0 0 8px rgba(198, 163, 106, 0.35); }
+.wifi-flow-step.is-done .flow-dot { background: var(--accent-color); border-color: var(--accent-color); box-shadow: 0 0 8px rgba(88, 166, 255, 0.35); }
 .flow-line { width: 54px; height: 1px; margin: -12px 8px 0; background: var(--border-color); }
 </style>
