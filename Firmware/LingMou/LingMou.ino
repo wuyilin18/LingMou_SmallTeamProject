@@ -7,9 +7,13 @@
 #include <WiFi.h>
 #include <WiFiUDP.h>
 #include <NTPClient.h>
+#include <Preferences.h>
+#include <WebServer.h>
 #include <NimBLEDevice.h>
 #include "HWCDC.h"
 #include <time.h>
+#include <sys/time.h>
+#include <stdlib.h>
 #include "LingMouEngine.h"
 
 
@@ -94,16 +98,41 @@ unsigned long lastSensorRead = 0;
 const unsigned long SENSOR_INTERVAL = 3000;
 
 // ==========================================
-// 🌐 Wi-Fi + NTP
+// 🌐 Wi-Fi + NTP + App 局域网接口
 // ==========================================
-#define WIFI_SSID "vivo S20 Pro"
-#define WIFI_PASSWORD "zxcvbnm1818"
+// 首次配网时，App 通过 BLE 发送：
+//   WIFI_SSID=<ssid>
+//   WIFI_PASS=<password>
+//   WIFI_CONNECT
+// 若字段超过手机默认 BLE 单包长度，可先发 WIFI_SSID= / WIFI_PASS=，
+// 后续分片使用 WIFI_SSID+ / WIFI_PASS+ 追加，再发送 WIFI_CONNECT。
+// 凭据会保存到 ESP32-C6 的 NVS，重启后自动重连。
+#ifndef LINGMOU_DEFAULT_WIFI_SSID
+#define LINGMOU_DEFAULT_WIFI_SSID ""
+#endif
+#ifndef LINGMOU_DEFAULT_WIFI_PASSWORD
+#define LINGMOU_DEFAULT_WIFI_PASSWORD ""
+#endif
 
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, "pool.ntp.org", 8 * 3600, 60000);  // UTC+8
 String timeStr = "--:--:--";
 String dateStr = "---- -- --";
 String weekdayStr = "---";
+
+Preferences wifiPreferences;
+WebServer appServer(80);
+String wifiSsid;
+String wifiPassword;
+bool wifiConnecting = false;
+bool appServerStarted = false;
+bool timeClientStarted = false;
+bool systemTimeValid = false;
+unsigned long wifiConnectStarted = 0;
+unsigned long nextWifiAttempt = 0;
+unsigned long lastClockUpdate = 0;
+const unsigned long WIFI_CONNECT_TIMEOUT = 15000;
+const unsigned long WIFI_RETRY_INTERVAL = 30000;
 
 unsigned long lastNtpUpdate = 0;
 const unsigned long NTP_INTERVAL = 30000;
@@ -118,12 +147,21 @@ const unsigned long INFO_REDRAW_MS = 1000;
 // ==========================================
 #define SERVICE_UUID "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
 #define CHARACTERISTIC_UUID_RX "beb5483e-36e1-4688-b7f5-ea07361b26a8"
-#define CHARACTERISTIC_UUID_TX "beb5483e-36e1-4688-b7f5-ea07361b26a9"  // 新增 Notify
+#define CHARACTERISTIC_UUID_TX "beb5483e-36e1-4688-b7f5-ea07361b26a9"  // App 订阅此特征接收遥测
 
 NimBLEServer* pServer = nullptr;
 NimBLECharacteristic* pNotifyChar = nullptr;
 bool deviceConnected = false;
 bool oldDeviceConnected = false;
+
+// BLE 回调会调用这些函数，提前声明以保持 Arduino 单文件编译兼容。
+void handleBleCommand(const String& msg);
+void sendBleMessage(const String& message);
+void startWifiConnection(bool immediate);
+void serviceWiFi();
+void setupAppServer();
+String buildTelemetryJson();
+void updateDisplayTimeFromUtcEpoch(time_t utcEpoch);
 
 
 // ==========================================
@@ -161,34 +199,15 @@ class MyCallbacks : public NimBLECharacteristicCallbacks {
     std::string rxValue = pCharacteristic->getValue();
     if (rxValue.length() > 0) {
       String msg = String(rxValue.c_str());
-        DebugUSB.print("【MTU指令击中】: ");
+      msg.trim();
+      DebugUSB.print("【BLE指令】: ");
+      if (msg.startsWith("WIFI_PASS=") || msg.startsWith("WIFI_PASSWORD=") ||
+          msg.startsWith("WIFI_PASS+") || msg.startsWith("WIFI_PASSWORD+")) {
+        DebugUSB.println("<hidden>");
+      } else {
         DebugUSB.println(msg);
-
-      lastBleCmdTime = millis();
-
-      if (msg == "B:1") {
-        gFace->DoBlink();
-      } else if (msg.startsWith("I:")) {
-        gFace->RandomBehavior = (msg.substring(2).toInt() == 1);
-        if (gFace->RandomBehavior) lastBleCmdTime = 0;
-      } else if (msg.startsWith("W:")) {
-        gFace->RandomLook = (msg.substring(2).toInt() == 1);
-        if (gFace->RandomLook) lastBleCmdTime = 0;
-      } else if (msg.startsWith("E:")) {
-        int eIndex = msg.substring(2).toInt();
-        if (eIndex >= 0 && eIndex < eEmotions::EMOTIONS_COUNT) {
-          gFace->RandomBehavior = false;
-          gFace->Behavior.GoToEmotion((eEmotions)eIndex);
-        }
-      } else if (msg.startsWith("X:")) {
-        int commaIndex = msg.indexOf(',');
-        if (commaIndex > 0) {
-          float x = constrain(msg.substring(2, commaIndex).toFloat(), -1.0, 1.0);
-          float y = constrain(msg.substring(commaIndex + 1).toFloat(), -1.0, 1.0);
-          gFace->RandomLook = false;
-          gFace->Look.LookAt(x, y);
-        }
       }
+      handleBleCommand(msg);
     }
   }
 };
@@ -235,6 +254,309 @@ void updateDateStrings() {
     "SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"
   };
   weekdayStr = WEEKDAYS[tmInfo.tm_wday];
+}
+
+void updateDisplayTimeFromUtcEpoch(time_t utcEpoch) {
+  time_t localEpoch = utcEpoch + 8 * 3600;
+  struct tm tmInfo;
+  gmtime_r(&localEpoch, &tmInfo);
+
+  char timeBuf[12];
+  char dateBuf[16];
+  snprintf(timeBuf, sizeof(timeBuf), "%02d:%02d:%02d", tmInfo.tm_hour, tmInfo.tm_min, tmInfo.tm_sec);
+  snprintf(dateBuf, sizeof(dateBuf), "%04d-%02d-%02d", tmInfo.tm_year + 1900, tmInfo.tm_mon + 1, tmInfo.tm_mday);
+  timeStr = timeBuf;
+  dateStr = dateBuf;
+
+  static const char* WEEKDAYS[] = {
+    "SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"
+  };
+  weekdayStr = WEEKDAYS[tmInfo.tm_wday];
+}
+
+String jsonEscape(const String& value) {
+  String escaped;
+  escaped.reserve(value.length() + 8);
+  for (size_t i = 0; i < value.length(); ++i) {
+    const char c = value[i];
+    if (c == '\\' || c == '"') {
+      escaped += '\\';
+    }
+    escaped += c;
+  }
+  return escaped;
+}
+
+String buildTelemetryJson() {
+  char buf[160];
+  const int wifiConnected = (WiFi.status() == WL_CONNECTED) ? 1 : 0;
+
+  if (ahtReady) {
+    snprintf(
+      buf,
+      sizeof(buf),
+      "{\"t\":%.1f,\"h\":%.1f,\"aht\":1,\"time\":\"%s\",\"wifi\":%d}",
+      temperature,
+      humidity,
+      timeStr.c_str(),
+      wifiConnected
+    );
+  } else {
+    snprintf(
+      buf,
+      sizeof(buf),
+      "{\"t\":null,\"h\":null,\"aht\":0,\"time\":\"%s\",\"wifi\":%d}",
+      timeStr.c_str(),
+      wifiConnected
+    );
+  }
+
+  return String(buf);
+}
+
+String buildStatusJson() {
+  const bool connected = (WiFi.status() == WL_CONNECTED);
+  String json = "{\"wifi\":";
+  json += connected ? "1" : "0";
+  json += ",\"connecting\":";
+  json += wifiConnecting ? "1" : "0";
+  json += ",\"ble\":";
+  json += deviceConnected ? "1" : "0";
+  json += ",\"ssid\":\"";
+  json += jsonEscape(wifiSsid);
+  json += "\",\"ip\":\"";
+  json += connected ? WiFi.localIP().toString() : "";
+  json += "\",\"telemetry\":";
+  json += buildTelemetryJson();
+  json += "}";
+  return json;
+}
+
+void sendBleMessage(const String& message) {
+  if (!deviceConnected || pNotifyChar == nullptr) return;
+  pNotifyChar->setValue((uint8_t*)message.c_str(), message.length());
+  pNotifyChar->notify();
+}
+
+void loadWifiCredentials() {
+  wifiPreferences.begin("wifi", true);
+  wifiSsid = wifiPreferences.getString("ssid", LINGMOU_DEFAULT_WIFI_SSID);
+  wifiPassword = wifiPreferences.getString("password", LINGMOU_DEFAULT_WIFI_PASSWORD);
+  wifiPreferences.end();
+  wifiSsid.trim();
+}
+
+void saveWifiCredentials() {
+  wifiPreferences.begin("wifi", false);
+  wifiPreferences.putString("ssid", wifiSsid);
+  wifiPreferences.putString("password", wifiPassword);
+  wifiPreferences.end();
+}
+
+void clearWifiCredentials() {
+  wifiPreferences.begin("wifi", false);
+  wifiPreferences.clear();
+  wifiPreferences.end();
+  wifiSsid = "";
+  wifiPassword = "";
+  wifiConnecting = false;
+  nextWifiAttempt = 0;
+  WiFi.disconnect();
+}
+
+void startWifiConnection(bool immediate) {
+  if (wifiSsid.length() == 0) {
+    wifiConnecting = false;
+    sendBleMessage("{\"type\":\"wifi\",\"ok\":0,\"error\":\"ssid_empty\"}");
+    return;
+  }
+
+  if (!immediate && millis() < nextWifiAttempt) return;
+  if (WiFi.status() == WL_CONNECTED) return;
+
+  WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);
+  WiFi.begin(wifiSsid.c_str(), wifiPassword.c_str());
+  wifiConnecting = true;
+  wifiConnectStarted = millis();
+  nextWifiAttempt = wifiConnectStarted + WIFI_RETRY_INTERVAL;
+  DebugUSB.println("WiFi connection started");
+}
+
+void handleApiStatus() {
+  appServer.sendHeader("Access-Control-Allow-Origin", "*");
+  appServer.send(200, "application/json", buildStatusJson());
+}
+
+void handleApiTelemetry() {
+  appServer.sendHeader("Access-Control-Allow-Origin", "*");
+  appServer.send(200, "application/json", buildTelemetryJson());
+}
+
+void setupAppServer() {
+  if (appServerStarted) return;
+
+  appServer.on("/", HTTP_GET, []() {
+    appServer.sendHeader("Access-Control-Allow-Origin", "*");
+    appServer.send(200, "text/plain", "LingMou API: /api/status or /api/telemetry");
+  });
+  appServer.on("/api/status", HTTP_GET, handleApiStatus);
+  appServer.on("/api/telemetry", HTTP_GET, handleApiTelemetry);
+  appServer.onNotFound([]() {
+    appServer.sendHeader("Access-Control-Allow-Origin", "*");
+    appServer.send(404, "application/json", "{\"error\":\"not_found\"}");
+  });
+  appServer.begin();
+  appServerStarted = true;
+  DebugUSB.println("App HTTP API started on port 80");
+}
+
+void serviceWiFi() {
+  const wl_status_t status = WiFi.status();
+
+  if (status == WL_CONNECTED) {
+    if (wifiConnecting || !timeClientStarted) {
+      wifiConnecting = false;
+      if (!timeClientStarted) {
+        timeClient.begin();
+        timeClientStarted = true;
+      }
+      timeClient.update();
+      timeStr = timeClient.getFormattedTime();
+      updateDateStrings();
+      setupAppServer();
+      DebugUSB.println("WiFi connected: " + WiFi.localIP().toString());
+      sendBleMessage("{\"type\":\"wifi\",\"ok\":1,\"ip\":\"" + WiFi.localIP().toString() + "\"}");
+    }
+
+    if (appServerStarted) appServer.handleClient();
+    return;
+  }
+
+  if (wifiConnecting && millis() - wifiConnectStarted >= WIFI_CONNECT_TIMEOUT) {
+    wifiConnecting = false;
+    WiFi.disconnect();
+    nextWifiAttempt = millis() + WIFI_RETRY_INTERVAL;
+    DebugUSB.println("WiFi connection timeout");
+    sendBleMessage("{\"type\":\"wifi\",\"ok\":0,\"error\":\"timeout\"}");
+  }
+
+  if (!wifiConnecting && wifiSsid.length() > 0 && millis() >= nextWifiAttempt) {
+    startWifiConnection(false);
+  }
+}
+
+void handleBleCommand(const String& msg) {
+  lastBleCmdTime = millis();
+
+  if (msg.startsWith("WIFI_SSID=")) {
+    wifiSsid = msg.substring(strlen("WIFI_SSID="));
+    sendBleMessage("{\"type\":\"wifi_config\",\"field\":\"ssid\",\"ok\":1}");
+    return;
+  }
+
+  if (msg.startsWith("WIFI_SSID+")) {
+    wifiSsid += msg.substring(strlen("WIFI_SSID+"));
+    sendBleMessage("{\"type\":\"wifi_config\",\"field\":\"ssid\",\"ok\":1}");
+    return;
+  }
+
+  if (msg.startsWith("WIFI_PASS=")) {
+    wifiPassword = msg.substring(strlen("WIFI_PASS="));
+    sendBleMessage("{\"type\":\"wifi_config\",\"field\":\"password\",\"ok\":1}");
+    return;
+  }
+
+  if (msg.startsWith("WIFI_PASS+")) {
+    wifiPassword += msg.substring(strlen("WIFI_PASS+"));
+    sendBleMessage("{\"type\":\"wifi_config\",\"field\":\"password\",\"ok\":1}");
+    return;
+  }
+
+  if (msg.startsWith("WIFI_PASSWORD+")) {
+    wifiPassword += msg.substring(strlen("WIFI_PASSWORD+"));
+    sendBleMessage("{\"type\":\"wifi_config\",\"field\":\"password\",\"ok\":1}");
+    return;
+  }
+
+  if (msg.startsWith("WIFI_PASSWORD=")) {
+    const int separator = msg.indexOf('=');
+    wifiPassword = msg.substring(separator + 1);
+    sendBleMessage("{\"type\":\"wifi_config\",\"field\":\"password\",\"ok\":1}");
+    return;
+  }
+
+  if (msg == "WIFI_CONNECT") {
+    if (wifiSsid.length() == 0) {
+      sendBleMessage("{\"type\":\"wifi\",\"ok\":0,\"error\":\"ssid_empty\"}");
+      return;
+    }
+    saveWifiCredentials();
+    nextWifiAttempt = 0;
+    startWifiConnection(true);
+    sendBleMessage("{\"type\":\"wifi\",\"ok\":1,\"state\":\"connecting\"}");
+    return;
+  }
+
+  if (msg == "WIFI_CLEAR") {
+    clearWifiCredentials();
+    sendBleMessage("{\"type\":\"wifi\",\"ok\":1,\"state\":\"cleared\"}");
+    return;
+  }
+
+  if (msg == "WIFI_STATUS" || msg == "GET_STATUS") {
+    sendBleMessage(buildStatusJson());
+    return;
+  }
+
+  if (msg == "GET_TELEMETRY") {
+    sendBleMessage(buildTelemetryJson());
+    return;
+  }
+
+  if (msg.startsWith("TIME=")) {
+    const long long epoch = atoll(msg.substring(strlen("TIME=")).c_str());
+    if (epoch > 0) {
+      struct timeval tv;
+      tv.tv_sec = (time_t)epoch;
+      tv.tv_usec = 0;
+      settimeofday(&tv, nullptr);
+      systemTimeValid = true;
+      updateDisplayTimeFromUtcEpoch((time_t)epoch);
+      sendBleMessage("{\"type\":\"time\",\"ok\":1}");
+    } else {
+      sendBleMessage("{\"type\":\"time\",\"ok\":0}");
+    }
+    return;
+  }
+
+  if (msg == "B:1") {
+    if (gFace) gFace->DoBlink();
+  } else if (msg.startsWith("I:")) {
+    if (gFace) {
+      gFace->RandomBehavior = (msg.substring(2).toInt() == 1);
+      if (gFace->RandomBehavior) lastBleCmdTime = 0;
+    }
+  } else if (msg.startsWith("W:")) {
+    if (gFace) {
+      gFace->RandomLook = (msg.substring(2).toInt() == 1);
+      if (gFace->RandomLook) lastBleCmdTime = 0;
+    }
+  } else if (msg.startsWith("E:")) {
+    int eIndex = msg.substring(2).toInt();
+    if (gFace && eIndex >= 0 && eIndex < eEmotions::EMOTIONS_COUNT) {
+      gFace->RandomBehavior = false;
+      gFace->Behavior.GoToEmotion((eEmotions)eIndex);
+    }
+  } else if (msg.startsWith("X:")) {
+    int commaIndex = msg.indexOf(',');
+    if (gFace && commaIndex > 0) {
+      float x = constrain(msg.substring(2, commaIndex).toFloat(), -1.0, 1.0);
+      float y = constrain(msg.substring(commaIndex + 1).toFloat(), -1.0, 1.0);
+      gFace->RandomLook = false;
+      gFace->Look.LookAt(x, y);
+    }
+  }
 }
 
 void drawThermometerIcon(int x, int y) {
@@ -389,31 +711,7 @@ void drawInfoScreen() {
 // ==========================================
 void sendBleTelemetry() {
   if (!deviceConnected || pNotifyChar == nullptr) return;
-
-  char buf[128];
-
-  if (ahtReady) {
-    snprintf(
-      buf,
-      sizeof(buf),
-      "{\"t\":%.1f,\"h\":%.1f,\"aht\":1,\"time\":\"%s\",\"wifi\":%d}",
-      temperature,
-      humidity,
-      timeStr.c_str(),
-      (WiFi.status() == WL_CONNECTED) ? 1 : 0
-    );
-  } else {
-    snprintf(
-      buf,
-      sizeof(buf),
-      "{\"t\":null,\"h\":null,\"aht\":0,\"time\":\"%s\",\"wifi\":%d}",
-      timeStr.c_str(),
-      (WiFi.status() == WL_CONNECTED) ? 1 : 0
-    );
-  }
-
-  pNotifyChar->setValue((uint8_t*)buf, strlen(buf));
-  pNotifyChar->notify();
+  sendBleMessage(buildTelemetryJson());
 }
 
 
@@ -527,6 +825,7 @@ void setup() {
   // BLE（保留旧 UUID，新增 Notify 特征）
   // BLE（NimBLE 版本）
   NimBLEDevice::init("LingMou");
+  NimBLEDevice::setMTU(247);
   pServer = NimBLEDevice::createServer();
   pServer->setCallbacks(new MyServerCallbacks());
 
@@ -542,8 +841,10 @@ void setup() {
   // 新增：遥测推送特征
   pNotifyChar = pService->createCharacteristic(
     CHARACTERISTIC_UUID_TX,
-    NIMBLE_PROPERTY::NOTIFY
+    NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
   );
+  String initialTelemetry = buildTelemetryJson();
+  pNotifyChar->setValue((uint8_t*)initialTelemetry.c_str(), initialTelemetry.length());
 
   pService->start();
   NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
@@ -552,22 +853,12 @@ void setup() {
 
 
 
-  // Wi-Fi + NTP（放最后，避免阻塞前面初始化）
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  DebugUSB.print("Connecting WiFi");
-  unsigned long wStart = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - wStart < 10000) {
-    delay(500);
-    DebugUSB.print(".");
-  }
-  if (WiFi.status() == WL_CONNECTED) {
-    DebugUSB.println("\nWiFi connected: " + WiFi.localIP().toString());
-    timeClient.begin();
-    timeClient.update();
-    timeStr = timeClient.getFormattedTime();
-    updateDateStrings();
+  // Wi-Fi + NTP：从 NVS 读取配网信息，非阻塞连接；BLE 始终保持可用。
+  loadWifiCredentials();
+  if (wifiSsid.length() > 0) {
+    startWifiConnection(true);
   } else {
-    DebugUSB.println("\nWiFi timeout，离线模式");
+    DebugUSB.println("No WiFi credentials; waiting for BLE provisioning");
   }
 
   DebugUSB.println("Setup done");
@@ -619,14 +910,22 @@ if (now - lastSensorRead >= SENSOR_INTERVAL) {
   sendBleTelemetry();
 }
 
+  // ── Wi-Fi 状态、HTTP API 与自动重连 ────────────
+  serviceWiFi();
 
   // ── NTP 定时同步 ─────────────────────────────
-  if (WiFi.status() == WL_CONNECTED && now - lastNtpUpdate >= NTP_INTERVAL) {
+  if (timeClientStarted && WiFi.status() == WL_CONNECTED && now - lastNtpUpdate >= NTP_INTERVAL) {
     lastNtpUpdate = now;
     if (timeClient.update()) {
       timeStr = timeClient.getFormattedTime();
       updateDateStrings();
     }
+  }
+
+  // 手机通过 BLE 授时后，让设备在本次上电期间继续走时。
+  if (systemTimeValid && now - lastClockUpdate >= 1000) {
+    lastClockUpdate = now;
+    updateDisplayTimeFromUtcEpoch(time(nullptr));
   }
 
   // ── 模式渲染 ─────────────────────────────────
