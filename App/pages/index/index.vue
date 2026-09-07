@@ -50,9 +50,9 @@
                 <view :class="['mini-status-dot', isConnected ? 'dot-online' : 'dot-offline']"></view>
                 <text>BLE</text>
               </view>
-              <view class="link-pill wifi-pill" @click.stop="openWifiDrawer">
-                <view :class="['mini-status-dot', wifiConnected ? 'dot-online' : (wifiConnecting ? 'dot-pending' : 'dot-offline')]"></view>
-                <text>WiFi</text>
+              <view :class="['link-pill', 'wifi-pill', wifiConnected ? 'wifi-online' : (wifiConnecting ? 'wifi-pending' : 'wifi-idle')]" @click.stop="openWifiDrawer">
+                <view class="wifi-signal-icon"><view></view><view></view><view></view></view>
+                <text>{{ wifiConnected ? 'WiFi 已连接' : (wifiConnecting ? 'WiFi 连接中' : 'WiFi 配置') }}</text>
               </view>
             </view>
           </view>
@@ -98,17 +98,17 @@
             <view class="face-section command-section">
               <view class="command-grid">
                 <button class="action-icon-btn blink-btn" @click="sendBlink">
-                  <view class="icon-wrapper"><text class="icon">✨</text></view>
+                  <view class="icon-wrapper"><view class="icon-3d icon-blink"><view class="blink-core"></view><view class="blink-spark spark-a"></view><view class="blink-spark spark-b"></view></view></view>
                   <text class="btn-label">灵瞬</text>
                 </button>
 
                 <button :class="['action-icon-btn', 'auto-btn', isIllusionOn ? 'btn-active' : '']" @click="toggleIllusion">
-                  <view class="icon-wrapper"><text class="icon">🎭</text></view>
+                  <view class="icon-wrapper"><view class="icon-3d icon-illusion"><view class="mask-face mask-back"></view><view class="mask-face mask-front"></view></view></view>
                   <text class="btn-label">幻相</text>
                 </button>
 
                 <button :class="['action-icon-btn', 'manual-btn', isWanderOn ? 'btn-active' : '']" @click="toggleWander">
-                  <view class="icon-wrapper"><text class="icon">🛸</text></view>
+                  <view class="icon-wrapper"><view class="icon-3d icon-wander"><view class="wander-orbit"></view><view class="wander-core"></view><view class="wander-arrow"></view></view></view>
                   <text class="btn-label">游荡</text>
                 </button>
               </view>
@@ -121,12 +121,12 @@
               </view>
               <view class="slider-row">
                 <text class="axis">X</text>
-                <slider class="cyber-slider" :value="lookX" min="-1" max="1" step="0.1" @change="onLookXChange" :activeColor="isDarkMode ? '#22d3ee' : '#0891b2'" block-size="16" />
+                <slider class="cyber-slider" :value="lookX" min="-1" max="1" step="0.1" @change="onLookXChange" :activeColor="isDarkMode ? '#c6a36a' : '#0891b2'" block-size="16" />
                 <text class="axis-value">{{ Number(lookX).toFixed(1) }}</text>
               </view>
               <view class="slider-row">
                 <text class="axis">Y</text>
-                <slider class="cyber-slider" :value="lookY" min="-1" max="1" step="0.1" @change="onLookYChange" :activeColor="isDarkMode ? '#22d3ee' : '#0891b2'" block-size="16" />
+                <slider class="cyber-slider" :value="lookY" min="-1" max="1" step="0.1" @change="onLookYChange" :activeColor="isDarkMode ? '#c6a36a' : '#0891b2'" block-size="16" />
                 <text class="axis-value">{{ Number(lookY).toFixed(1) }}</text>
               </view>
             </view>
@@ -220,7 +220,7 @@
             <input class="drawer-input" v-model="wifiForm.password" password placeholder="输入 WiFi 密码" />
           </view>
 
-          <view class="drawer-status-row">
+          <view :class="['drawer-status-row', 'drawer-status-' + wifiConfigState]">
             <view :class="['mini-status-dot', wifiConnected ? 'dot-online' : (wifiConnecting ? 'dot-pending' : 'dot-offline')]"></view>
             <text>{{ wifiDrawerStatus }}</text>
             <text v-if="wifiIp" class="drawer-ip">{{ wifiIp }}</text>
@@ -228,9 +228,17 @@
 
           <view class="drawer-actions">
             <button class="drawer-secondary-btn" @click="closeWifiDrawer">取消</button>
-            <button class="drawer-primary-btn" :disabled="wifiConfigSaving" @click="saveWifiConfig">
-              {{ wifiConfigSaving ? '连接中...' : '保存并连接' }}
+            <button :class="['drawer-primary-btn', wifiConfigSaving ? 'is-loading' : '', wifiConfigState === 'success' ? 'is-success' : '', wifiConfigState === 'error' ? 'is-error' : '']" :disabled="wifiConfigSaving" @click="saveWifiConfig">
+              <view v-if="wifiConfigSaving" class="button-spinner"></view>
+              <text>{{ wifiConfigState === 'success' ? '已连接' : (wifiConfigState === 'error' ? '重试连接' : (wifiConfigSaving ? '正在发送...' : '保存并连接')) }}</text>
             </button>
+          </view>
+          <view class="wifi-flow">
+            <view :class="['wifi-flow-step', isConnected ? 'is-done' : '']"><view class="flow-dot"></view><text>BLE</text></view>
+            <view class="flow-line"></view>
+            <view :class="['wifi-flow-step', wifiConfigState === 'sending' || wifiConfigState === 'waiting' || wifiConnected ? 'is-done' : '']"><view class="flow-dot"></view><text>配网</text></view>
+            <view class="flow-line"></view>
+            <view :class="['wifi-flow-step', wifiConnected ? 'is-done' : '']"><view class="flow-dot"></view><text>在线</text></view>
           </view>
           <text class="drawer-note">配网信息通过已连接的 BLE 通道发送到 LingMou</text>
         </view>
@@ -275,6 +283,7 @@ export default {
       wifiIp: '',
       wifiDrawerVisible: false,
       wifiConfigSaving: false,
+      wifiConfigState: 'idle',
       wifiForm: {
         ssid: '',
         password: ''
@@ -339,6 +348,10 @@ export default {
       return '舒适';
     },
     wifiDrawerStatus() {
+      if (this.wifiConfigState === 'sending') return '正在通过 BLE 发送配置...';
+      if (this.wifiConfigState === 'waiting') return '设备正在连接 WiFi...';
+      if (this.wifiConfigState === 'success') return 'WiFi 已连接，可开始读取数据';
+      if (this.wifiConfigState === 'error') return '连接失败，请检查名称和密码';
       if (this.wifiConnected) return 'WiFi 已连接';
       if (this.wifiConnecting) return 'WiFi 连接中...';
       if (!this.isConnected) return '请先连接 BLE';
@@ -629,19 +642,39 @@ export default {
       if (data.type === 'wifi') {
         this.wifiConnected = Number(data.ok) === 1 && data.state !== 'connecting' ? true : this.wifiConnected;
         this.wifiConnecting = data.state === 'connecting' || (data.ok === 1 && !data.ip);
+        if (data.state === 'connecting') this.wifiConfigState = 'waiting';
         if (data.ip) {
           this.wifiIp = data.ip;
           this.wifiConnecting = false;
+          this.wifiConfigState = 'success';
+          this.wifiConfigSaving = false;
           this.startWifiPolling();
+          if (this.wifiDrawerVisible) {
+            setTimeout(() => { this.wifiDrawerVisible = false; }, 1000);
+          }
         }
         if (data.ok === 0) {
           this.wifiConnected = false;
           this.wifiConnecting = false;
+          this.wifiConfigState = 'error';
+          this.wifiConfigSaving = false;
         }
       }
       if (data.wifi !== undefined) this.wifiConnected = Number(data.wifi) === 1;
+      if (data.connecting !== undefined) {
+        this.wifiConnecting = Number(data.connecting) === 1;
+        if (this.wifiConnecting) this.wifiConfigState = 'waiting';
+      }
+      if (data.ssid !== undefined) this.wifiSsid = data.ssid || '';
       if (data.ip) this.wifiIp = data.ip;
       if (data.wifi === 1 && this.wifiIp) this.startWifiPolling();
+      if (data.state === 'cleared') {
+        this.wifiConnected = false;
+        this.wifiConnecting = false;
+        this.wifiIp = '';
+        this.wifiConfigState = 'idle';
+        this.stopWifiPolling();
+      }
     },
 
     disconnectBle() {
@@ -670,11 +703,12 @@ export default {
     openWifiDrawer() {
       this.wifiForm.ssid = this.wifiSsid;
       this.wifiForm.password = '';
+      if (!this.wifiConnected && !this.wifiConnecting) this.wifiConfigState = 'idle';
       this.wifiDrawerVisible = true;
     },
 
     closeWifiDrawer() {
-      if (!this.wifiConfigSaving) this.wifiDrawerVisible = false;
+      this.wifiDrawerVisible = false;
     },
 
     encodeUtf8(text) {
@@ -723,13 +757,14 @@ export default {
         return;
       }
       this.wifiConfigSaving = true;
+      this.wifiConfigState = 'sending';
       this.wifiSsid = this.wifiForm.ssid.trim();
       this.wifiConnecting = true;
       this.sendWifiField('WIFI_SSID=', 'WIFI_SSID+', this.wifiSsid, () => {
         this.sendWifiField('WIFI_PASS=', 'WIFI_PASS+', this.wifiForm.password, () => {
           this.sendBLECommand('WIFI_CONNECT', () => {
             this.wifiConfigSaving = false;
-            this.wifiDrawerVisible = false;
+            this.wifiConfigState = 'waiting';
             uni.showToast({ title: '已发送 WiFi 配置', icon: 'success' });
           });
         });
@@ -753,10 +788,16 @@ export default {
         url: `http://${this.wifiIp}/api/telemetry`,
         timeout: 2500,
         success: (res) => {
-          if (!res.data || typeof res.data !== 'object') return;
+          let payload = res.data;
+          if (typeof payload === 'string') {
+            try { payload = JSON.parse(payload); } catch (e) { return; }
+          }
+          if (!payload || typeof payload !== 'object') return;
           this.wifiConnected = true;
+          this.wifiConfigState = 'success';
+          this.wifiConfigSaving = false;
           this.telemetrySource = 'WiFi';
-          this.handleBlePayload(res.data);
+          this.handleBlePayload(payload);
         },
         fail: () => {
           this.telemetrySource = 'BLE';
@@ -1032,6 +1073,7 @@ page { background-color: transparent; height: 100%; }
 .link-status-pills { display: flex; align-items: center; gap: 8px; }
 .link-pill { display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; border: 1px solid var(--border-color); border-radius: 999px; color: var(--text-sub); font-size: 10px; letter-spacing: 0.6px; background: var(--btn-bg); }
 .wifi-pill { cursor: pointer; transition: transform 0.25s ease, border-color 0.25s ease; }
+.wifi-pill:hover { transform: translateY(-1px); border-color: var(--accent-color); }
 .wifi-pill:active { transform: translateY(2px) scale(0.97); border-color: var(--accent-color); }
 .mini-status-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; transition: all 0.35s ease; }
 .dot-pending { background: #f59e0b; box-shadow: 0 0 9px rgba(245, 158, 11, 0.55); }
@@ -1141,4 +1183,98 @@ page { background-color: transparent; height: 100%; }
   .emotion-section { margin-left: 0; }
   .tracking-section { margin-right: 0; }
 }
+
+/* =========================================
+   🌘 黑夜模式：石墨、暖金与低饱和青灰
+   ========================================= */
+.dark-theme {
+  --bg-color: #202226;
+  --card-bg: rgba(46, 49, 53, 0.9);
+  --text-main: #f0ede6;
+  --text-sub: #aaa79f;
+  --border-color: rgba(239, 232, 216, 0.13);
+  --btn-bg: #2d3136;
+  --btn-hover: #3a3f45;
+  --accent-color: #c6a36a;
+  --gradient-start: #354149;
+  --gradient-end: #8a6d4d;
+  --shadow-color: rgba(0, 0, 0, 0.34);
+  --orb-color: rgba(190, 153, 94, 0.065);
+}
+.dark-theme .night-bg { background: linear-gradient(to bottom, #292c30, #17191c); }
+.dark-theme .dot-online { background-color: #98b58a; box-shadow: 0 0 8px rgba(152, 181, 138, 0.42); }
+.dark-theme .dot-offline { background-color: #c77870; box-shadow: 0 0 8px rgba(199, 120, 112, 0.34); }
+.dark-theme .dot-pending { background: #c59b5e; box-shadow: 0 0 8px rgba(197, 155, 94, 0.36); }
+.dark-theme .ble-scan-btn { background: linear-gradient(135deg, #354149, #866947); box-shadow: 0 5px 15px rgba(122, 94, 63, 0.25); }
+.dark-theme .mode-icon-scene { background: linear-gradient(145deg, rgba(198, 163, 106, 0.18), rgba(92, 112, 116, 0.12)); border-color: rgba(198, 163, 106, 0.34); box-shadow: 0 8px 20px var(--shadow-color), inset 0 0 16px rgba(198, 163, 106, 0.06); }
+.dark-theme .mode-icon-face { color: var(--accent-color); text-shadow: 0 0 10px rgba(198, 163, 106, 0.25); }
+.dark-theme .mode-icon-orbit { border-color: rgba(198, 163, 106, 0.42); }
+.dark-theme .action-icon-btn:active .icon-wrapper { background: rgba(198, 163, 106, 0.13); border-color: rgba(198, 163, 106, 0.55); box-shadow: 0 0 17px rgba(198, 163, 106, 0.23), inset 0 0 10px rgba(198, 163, 106, 0.12); }
+.dark-theme .action-icon-btn:active .btn-label, .dark-theme .action-icon-btn.btn-active .btn-label { color: var(--accent-color); text-shadow: 0 0 8px rgba(198, 163, 106, 0.28); }
+.dark-theme .action-icon-btn.btn-active .icon-wrapper { background: rgba(198, 163, 106, 0.15); border-color: rgba(198, 163, 106, 0.62); box-shadow: 0 0 20px rgba(198, 163, 106, 0.24), inset 0 0 12px rgba(198, 163, 106, 0.14); }
+.dark-theme .chip-btn:active { background: rgba(198, 163, 106, 0.13); border-color: var(--accent-color); color: var(--accent-color); box-shadow: 0 0 12px rgba(198, 163, 106, 0.2); }
+.dark-theme .drawer-primary-btn { background: linear-gradient(135deg, #354149, #866947); box-shadow: 0 6px 18px rgba(122, 94, 63, 0.25); }
+.dark-theme .wifi-drawer { background: #26292d; }
+.dark-theme .droplet-mark:before { background: rgba(126, 163, 157, 0.16); border-color: #86a9a2; }
+.dark-theme .droplet-mark:after { background: #86a9a2; box-shadow: 0 0 8px rgba(134, 169, 162, 0.32); }
+.dark-theme .humidity-fill { background: linear-gradient(90deg, #668b86, #9ab0a0); }
+
+/* =========================================
+   🧊 3D 功能图标：灵瞬 / 幻相 / 游荡
+   ========================================= */
+.icon-3d { width: 38px; height: 38px; position: relative; transform-style: preserve-3d; transition: transform 0.28s ease; }
+.action-icon-btn:active .icon-3d { transform: translateY(2px) scale(0.9); }
+.blink-core { position: absolute; left: 6px; top: 12px; width: 27px; height: 15px; border-radius: 52% 48% 46% 54%; background: linear-gradient(145deg, #f2d39e 0%, #d39a61 54%, #9d6248 100%); transform: rotateX(25deg) rotateY(-16deg) translateZ(4px); box-shadow: 4px 6px 0 rgba(77, 48, 39, 0.22), inset 2px 2px 3px rgba(255, 247, 222, 0.55); }
+.blink-core:before { content: ''; position: absolute; left: 7px; top: 6px; width: 13px; height: 3px; border-radius: 50%; background: #573d35; transform: rotate(-4deg); }
+.blink-core:after { content: ''; position: absolute; right: -3px; bottom: -4px; width: 7px; height: 7px; border-radius: 50%; background: #c98354; box-shadow: inset 1px 1px 2px rgba(255,255,255,0.35); }
+.blink-spark { position: absolute; width: 6px; height: 6px; background: #e2b16d; transform: rotate(45deg); border-radius: 2px; box-shadow: 1px 2px 0 rgba(89, 57, 40, 0.18); }
+.spark-a { left: 3px; top: 4px; }
+.spark-b { right: 2px; top: 1px; width: 4px; height: 4px; opacity: 0.72; }
+.icon-illusion .mask-face { position: absolute; width: 23px; height: 17px; border-radius: 52% 48% 46% 54%; transform-style: preserve-3d; }
+.mask-back { left: 10px; top: 5px; background: linear-gradient(145deg, #9aaeb0, #61777b); transform: rotate(13deg) translateZ(1px); box-shadow: 3px 4px 0 rgba(45, 50, 50, 0.27), inset 2px 2px 3px rgba(238, 247, 239, 0.32); }
+.mask-front { left: 3px; top: 14px; background: linear-gradient(145deg, #e0b27e, #a9674c); transform: rotate(-12deg) translateZ(7px); box-shadow: 3px 4px 0 rgba(72, 43, 39, 0.26), inset 2px 2px 3px rgba(255, 239, 205, 0.4); }
+.mask-face:before { content: ''; position: absolute; left: 6px; top: 6px; width: 4px; height: 3px; border-radius: 50%; background: #4f4140; box-shadow: 8px 0 0 #4f4140; }
+.mask-face:after { content: ''; position: absolute; left: 8px; bottom: 3px; width: 8px; height: 3px; border-bottom: 1px solid rgba(78, 55, 48, 0.8); border-radius: 50%; }
+.icon-wander .wander-orbit { position: absolute; left: 2px; top: 10px; width: 34px; height: 17px; border: 2px solid #9caa9e; border-radius: 50%; transform: rotateX(62deg) rotateZ(-22deg); opacity: 0.86; box-shadow: 0 3px 0 rgba(50, 65, 57, 0.22); }
+.icon-wander .wander-core { position: absolute; left: 12px; top: 8px; width: 15px; height: 15px; border-radius: 50%; background: radial-gradient(circle at 32% 28%, #d9e0c8, #8eaa8d 48%, #58725f 100%); transform: translateZ(6px); box-shadow: 3px 5px 0 rgba(42, 54, 46, 0.24), inset 2px 2px 3px rgba(255,255,255,0.35); }
+.icon-wander .wander-arrow { position: absolute; right: 1px; top: 3px; width: 0; height: 0; border-top: 5px solid transparent; border-bottom: 5px solid transparent; border-left: 8px solid #c8a26a; transform: rotate(-24deg) translateZ(8px); filter: drop-shadow(1px 2px 0 rgba(57, 45, 35, 0.2)); }
+.action-icon-btn.btn-active .icon-illusion .mask-front { animation: mask-float 1.8s ease-in-out infinite alternate; }
+.action-icon-btn.btn-active .icon-wander .wander-orbit { animation: wander-spin 2.8s linear infinite; }
+.blink-btn:active .blink-core { transform: rotateX(44deg) rotateY(-16deg) scaleY(0.48) translateZ(4px); }
+@keyframes mask-float { from { transform: rotate(-12deg) translate3d(0, 0, 7px); } to { transform: rotate(-7deg) translate3d(2px, -2px, 9px); } }
+@keyframes wander-spin { from { transform: rotateX(62deg) rotateZ(-22deg); } to { transform: rotateX(62deg) rotateZ(338deg); } }
+
+/* WiFi 按钮：连接状态、信号弧线与轻量呼吸反馈 */
+.wifi-pill { position: relative; overflow: hidden; }
+.wifi-pill:after { content: ''; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 25%, rgba(255,255,255,0.18) 50%, transparent 75%); transform: translateX(-125%); transition: transform 0.55s ease; }
+.wifi-pill:active:after, .wifi-pill.wifi-online:active:after { transform: translateX(125%); }
+.wifi-pill.wifi-pending { animation: wifi-breathe 1.8s ease-in-out infinite; }
+.wifi-pill.wifi-online { border-color: rgba(143, 174, 128, 0.48); color: #75926d; }
+.dark-theme .wifi-pill.wifi-online { color: #a7bb91; border-color: rgba(167, 187, 145, 0.38); }
+.dark-theme .wifi-pill.wifi-pending { color: #d0a86e; border-color: rgba(208, 168, 110, 0.42); }
+.wifi-signal-icon { width: 17px; height: 14px; position: relative; color: currentColor; flex-shrink: 0; }
+.wifi-signal-icon:before, .wifi-signal-icon:after { content: ''; position: absolute; left: 50%; border: 1.4px solid currentColor; border-left-color: transparent; border-bottom-color: transparent; border-radius: 100% 0 0 0; transform: translateX(-50%) rotate(-45deg); }
+.wifi-signal-icon:before { width: 15px; height: 15px; top: -3px; opacity: 0.42; }
+.wifi-signal-icon:after { width: 9px; height: 9px; top: 1px; opacity: 0.72; }
+.wifi-signal-icon view { position: absolute; left: 50%; bottom: 0; width: 3px; height: 3px; border-radius: 50%; background: currentColor; transform: translateX(-50%); }
+.wifi-signal-icon view:nth-child(2), .wifi-signal-icon view:nth-child(3) { display: none; }
+@keyframes wifi-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.025); } }
+
+/* 配网抽屉按钮和连接阶段 */
+.drawer-status-row { transition: color 0.3s ease; }
+.drawer-status-sending, .drawer-status-waiting { color: var(--accent-color); }
+.drawer-status-success { color: #7e9c72; }
+.drawer-status-error { color: #bd756c; }
+.drawer-primary-btn { display: flex; align-items: center; justify-content: center; gap: 8px; transition: transform 0.25s ease, filter 0.25s ease, background 0.3s ease; }
+.drawer-primary-btn:not([disabled]):active { transform: translateY(2px) scale(0.985); filter: brightness(0.94); }
+.drawer-primary-btn.is-success { background: linear-gradient(135deg, #5f7d67, #8ea978); }
+.drawer-primary-btn.is-error { background: linear-gradient(135deg, #76514d, #b47268); }
+.button-spinner { width: 13px; height: 13px; border: 2px solid rgba(255,255,255,0.38); border-top-color: #fff; border-radius: 50%; animation: button-spin 0.75s linear infinite; }
+@keyframes button-spin { to { transform: rotate(360deg); } }
+.wifi-flow { display: flex; align-items: center; justify-content: center; margin-top: 19px; color: var(--text-sub); }
+.wifi-flow-step { display: flex; flex-direction: column; align-items: center; gap: 5px; font-size: 9px; letter-spacing: 0.7px; transition: color 0.3s ease; }
+.wifi-flow-step.is-done { color: var(--accent-color); }
+.flow-dot { width: 7px; height: 7px; border-radius: 50%; border: 1px solid var(--border-color); background: transparent; transition: all 0.3s ease; }
+.wifi-flow-step.is-done .flow-dot { background: var(--accent-color); border-color: var(--accent-color); box-shadow: 0 0 8px rgba(198, 163, 106, 0.35); }
+.flow-line { width: 54px; height: 1px; margin: -12px 8px 0; background: var(--border-color); }
 </style>
