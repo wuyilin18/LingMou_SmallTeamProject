@@ -54,12 +54,12 @@ bool AsyncTimer::IsActive() const {
 	return _isActive;
 }
 
-bool AsyncTimer::IsExpired() const{
+bool AsyncTimer::IsExpired() const {
 	return _isExpired;
 }
 
 // ===== EyeTransition.cpp =====
-EyeTransition::EyeTransition() : Animation(500){}
+EyeTransition::EyeTransition() : Animation(500) {}
 
 void EyeTransition::Update() {
 	float t = Animation.GetValue();
@@ -116,19 +116,19 @@ void EyeTransformation::Apply()
 
 void EyeTransformation::SetDestin(Transformation transformation)
 {
-	Origin.MoveX =  Current.MoveX;
-	Origin.MoveY =  Current.MoveY;
+	Origin.MoveX = Current.MoveX;
+	Origin.MoveY = Current.MoveY;
 	Origin.ScaleX = Current.ScaleX;
 	Origin.ScaleY = Current.ScaleY;
 
-	Destin.MoveX =  transformation.MoveX;
-	Destin.MoveY =  transformation.MoveY;
+	Destin.MoveX = transformation.MoveX;
+	Destin.MoveY = transformation.MoveY;
 	Destin.ScaleX = transformation.ScaleX;
 	Destin.ScaleY = transformation.ScaleY;
 }
 
 // ===== EyeVariation.cpp =====
-EyeVariation::EyeVariation() : Animation(0, 1000, 0, 1000, 0){}
+EyeVariation::EyeVariation() : Animation(0, 1000, 0, 1000, 0) {}
 
 void EyeVariation::Clear() {
 	Values.OffsetX = 0;
@@ -166,11 +166,11 @@ void EyeVariation::Apply(float t) {
 }
 
 // ===== EyeBlink.cpp =====
-EyeBlink::EyeBlink() : Animation(40, 100, 40) { }
+EyeBlink::EyeBlink() : Animation(40, 100, 40) {}
 
 void EyeBlink::Update() {
 	auto t = Animation.GetValue();
-	if(Animation.GetElapsed() > Animation.Interval) t = 0.0;
+	if (Animation.GetElapsed() > Animation.Interval) t = 0.0;
 	Apply(t * t);
 }
 
@@ -225,10 +225,10 @@ void LookAssistant::LookAt(float x, float y)
 	float scaleY_x;
 	float scaleY_y;
 
-  // What is this witchcraft...?!
-	moveX_x = -25 * x;
+	// What is this witchcraft...?!
+	moveX_x = -30 * x;
 	moveY_x = -3 * x;
-	moveY_y = 20 * y;
+	moveY_y = 22 * y;
 	scaleY_x = 1.0 - x * 0.2;
 	scaleY_y = 1.0 - (y > 0 ? y : -y) * 0.4;
 
@@ -241,7 +241,7 @@ void LookAssistant::LookAt(float x, float y)
 	moveY_x = +3 * x;
 	scaleY_x = 1.0 + x * 0.2;
 	transformation.MoveX = moveX_x;
-	transformation.MoveY = + moveY_y; //moveY_x + moveY_y;
+	transformation.MoveY = +moveY_y; //moveY_x + moveY_y;
 	transformation.ScaleX = 1.0;
 	transformation.ScaleY = scaleY_x * scaleY_y;
 	_face.LeftEye.Transformation.SetDestin(transformation);
@@ -257,7 +257,7 @@ void LookAssistant::Update() {
 		Timer.Reset();
 		auto x = random(-50, 50);
 		auto y = random(-50, 50);
-		LookAt((float)x  / 100, (float)y / 100);
+		LookAt((float)x / 100, (float)y / 100);
 	}
 
 }
@@ -265,7 +265,7 @@ void LookAssistant::Update() {
 // ===== Eye.cpp =====
 Eye::Eye(Face& face) : _face(face) {
 
-  this->IsMirrored = false;
+	this->IsMirrored = false;
 
 	ChainOperators();
 	Variation1.Animation._t0 = 200;
@@ -302,65 +302,85 @@ void Eye::Update() {
 
 void Eye::Draw() {
 	Update();
-	EyeDrawer::Draw(CenterX, CenterY, FinalConfig);
+
+	// 1.5x visual scale for the landscape eye mode.
+	// FinalConfig already contains expression, variation, blink and LookAt offsets,
+	// so scaling here enlarges both the eyes and their visible movement range.
+	const float EYE_VISUAL_SCALE = 1.5f;
+	EyeConfig scaled = *FinalConfig;
+
+	scaled.OffsetX = (int16_t)roundf(FinalConfig->OffsetX * EYE_VISUAL_SCALE);
+	scaled.OffsetY = (int16_t)roundf(FinalConfig->OffsetY * EYE_VISUAL_SCALE);
+	scaled.Height = (int16_t)roundf(FinalConfig->Height * EYE_VISUAL_SCALE);
+	scaled.Width = (int16_t)roundf(FinalConfig->Width * EYE_VISUAL_SCALE);
+
+	scaled.Radius_Top = (int16_t)roundf(FinalConfig->Radius_Top * EYE_VISUAL_SCALE);
+	scaled.Radius_Bottom = (int16_t)roundf(FinalConfig->Radius_Bottom * EYE_VISUAL_SCALE);
+	scaled.Inverse_Radius_Top = (int16_t)roundf(FinalConfig->Inverse_Radius_Top * EYE_VISUAL_SCALE);
+	scaled.Inverse_Radius_Bottom = (int16_t)roundf(FinalConfig->Inverse_Radius_Bottom * EYE_VISUAL_SCALE);
+	scaled.Inverse_Offset_Top = (int16_t)roundf(FinalConfig->Inverse_Offset_Top * EYE_VISUAL_SCALE);
+	scaled.Inverse_Offset_Bottom = (int16_t)roundf(FinalConfig->Inverse_Offset_Bottom * EYE_VISUAL_SCALE);
+
+	// Slopes and color are dimensionless / unchanged.
+	EyeDrawer::Draw(CenterX, CenterY, &scaled);
 }
 
 void Eye::ApplyPreset(const EyeConfig config) {
-    Config.OffsetX = this->IsMirrored ? -config.OffsetX : config.OffsetX;
-    Config.OffsetY = -config.OffsetY;
-    Config.Height = config.Height;
-    Config.Width = config.Width;
-    Config.Slope_Top = this->IsMirrored ? config.Slope_Top : -config.Slope_Top;
-    Config.Slope_Bottom = this->IsMirrored ? config.Slope_Bottom : -config.Slope_Bottom;
-    Config.Radius_Top = config.Radius_Top;
-    Config.Radius_Bottom = config.Radius_Bottom;
-    Config.Inverse_Radius_Top = config.Inverse_Radius_Top;
-    Config.Inverse_Radius_Bottom = config.Inverse_Radius_Bottom;
+	Config.OffsetX = this->IsMirrored ? -config.OffsetX : config.OffsetX;
+	Config.OffsetY = -config.OffsetY;
+	Config.Height = config.Height;
+	Config.Width = config.Width;
+	Config.Slope_Top = this->IsMirrored ? config.Slope_Top : -config.Slope_Top;
+	Config.Slope_Bottom = this->IsMirrored ? config.Slope_Bottom : -config.Slope_Bottom;
+	Config.Radius_Top = config.Radius_Top;
+	Config.Radius_Bottom = config.Radius_Bottom;
+	Config.Inverse_Radius_Top = config.Inverse_Radius_Top;
+	Config.Inverse_Radius_Bottom = config.Inverse_Radius_Bottom;
 
-    // ★ 补上
-    Config.Inverse_Offset_Top = config.Inverse_Offset_Top;
-    Config.Inverse_Offset_Bottom = config.Inverse_Offset_Bottom;
-    Config.Color = config.Color;
+	// ★ 补上
+	Config.Inverse_Offset_Top = config.Inverse_Offset_Top;
+	Config.Inverse_Offset_Bottom = config.Inverse_Offset_Bottom;
+	Config.Color = config.Color;
 
-    // ★ 让初始目标也有确定值
-    Transition.Destin = Config;
+	// ★ 让初始目标也有确定值
+	Transition.Destin = Config;
 
-    Transition.Animation.Restart();
+	Transition.Animation.Restart();
 }
 
 void Eye::TransitionTo(const EyeConfig config) {
-    Transition.Destin.OffsetX =
-        this->IsMirrored ? -config.OffsetX : config.OffsetX;
+	Transition.Destin.OffsetX =
+		this->IsMirrored ? -config.OffsetX : config.OffsetX;
 
-    Transition.Destin.OffsetY = -config.OffsetY;
-    Transition.Destin.Height = config.Height;
-    Transition.Destin.Width = config.Width;
+	Transition.Destin.OffsetY = -config.OffsetY;
+	Transition.Destin.Height = config.Height;
+	Transition.Destin.Width = config.Width;
 
-    Transition.Destin.Slope_Top =
-        this->IsMirrored ? config.Slope_Top : -config.Slope_Top;
+	Transition.Destin.Slope_Top =
+		this->IsMirrored ? config.Slope_Top : -config.Slope_Top;
 
-    Transition.Destin.Slope_Bottom =
-        this->IsMirrored ? config.Slope_Bottom : -config.Slope_Bottom;
+	Transition.Destin.Slope_Bottom =
+		this->IsMirrored ? config.Slope_Bottom : -config.Slope_Bottom;
 
-    Transition.Destin.Radius_Top = config.Radius_Top;
-    Transition.Destin.Radius_Bottom = config.Radius_Bottom;
+	Transition.Destin.Radius_Top = config.Radius_Top;
+	Transition.Destin.Radius_Bottom = config.Radius_Bottom;
 
-    Transition.Destin.Inverse_Radius_Top =
-        config.Inverse_Radius_Top;
+	Transition.Destin.Inverse_Radius_Top =
+		config.Inverse_Radius_Top;
 
-    Transition.Destin.Inverse_Radius_Bottom =
-        config.Inverse_Radius_Bottom;
+	Transition.Destin.Inverse_Radius_Bottom =
+		config.Inverse_Radius_Bottom;
 
-    // ★ 原来漏掉的
-    Transition.Destin.Inverse_Offset_Top =
-        config.Inverse_Offset_Top;
+	// ★ 原来漏掉的
+	Transition.Destin.Inverse_Offset_Top =
+		config.Inverse_Offset_Top;
 
-    Transition.Destin.Inverse_Offset_Bottom =
-        config.Inverse_Offset_Bottom;
+	Transition.Destin.Inverse_Offset_Bottom =
+		config.Inverse_Offset_Bottom;
 
-    Transition.Destin.Color = config.Color;
+	Transition.Destin.Color = config.Color;
 
-    Transition.Animation.Restart();
+	Transition.Animation.Restart();
 }
 
 
@@ -533,11 +553,11 @@ void FaceExpression::GoTo_Awe()
 }
 
 // ===== FaceBehavior.cpp =====
-FaceBehavior::FaceBehavior(Face& face) : _face(face), Timer(4000) { 
+FaceBehavior::FaceBehavior(Face& face) : _face(face), Timer(4000) {
 	// 🔴 FIX: 把原来的 Timer(500) 改成 4000！500毫秒变一次脸太像抽风了，4秒变一次最优雅！
 	Timer.Start();
 	Clear();
-	
+
 	// 🔴 FIX: 把所有 18 个表情的“被抽中概率”全部设置为 1.0！
 	// 否则它永远只能抽中 Normal！
 	for (int emotion = 0; emotion < eEmotions::EMOTIONS_COUNT; emotion++) {
@@ -562,19 +582,19 @@ void FaceBehavior::Clear() {
 // Use roulette wheel to select a new emotion, based on assigned weights
 eEmotions FaceBehavior::GetRandomEmotion() {
 
-  // Calculate the total sum of all emotional weights
+	// Calculate the total sum of all emotional weights
 	float sum_of_weight = 0;
 	for (int emotion = 0; emotion < eEmotions::EMOTIONS_COUNT; emotion++) {
 		sum_of_weight += Emotions[emotion];
 	}
-  // If no weights have been assigned, default to "normal" emotion
+	// If no weights have been assigned, default to "normal" emotion
 	if (sum_of_weight == 0) {
 		return eEmotions::Normal;
 	}
-  // Now pick a random number that lies somewhere in the range of total weights
+	// Now pick a random number that lies somewhere in the range of total weights
 	float rand = random(0, 1000 * sum_of_weight) / 1000.0;
-  // Loop over emotions and select the one whose probabity distribution contains
-  // the value in which the random number lies
+	// Loop over emotions and select the one whose probabity distribution contains
+	// the value in which the random number lies
 	float acc = 0;
 	for (int emotion = 0; emotion < eEmotions::EMOTIONS_COUNT; emotion++) {
 		if (Emotions[emotion] == 0) continue;
@@ -583,7 +603,7 @@ eEmotions FaceBehavior::GetRandomEmotion() {
 			return (eEmotions)emotion;
 		}
 	}
-  // If something goes wrong in the calculation, return "normal"
+	// If something goes wrong in the calculation, return "normal"
 	return eEmotions::Normal;
 }
 
@@ -600,39 +620,39 @@ void FaceBehavior::Update() {
 }
 
 void FaceBehavior::GoToEmotion(eEmotions emotion) {
-  // Set the currentEmotion to the desired emotion
+	// Set the currentEmotion to the desired emotion
 	CurrentEmotion = emotion;
 
-  // Call the appropriate expression transition function 
+	// Call the appropriate expression transition function 
 	switch (CurrentEmotion) {
-    case eEmotions::Normal: _face.Expression.GoTo_Normal(); break;
-    case eEmotions::Angry: _face.Expression.GoTo_Angry(); break;
-    case eEmotions::Glee: _face.Expression.GoTo_Glee(); break;
-    case eEmotions::Happy: _face.Expression.GoTo_Happy(); break;
-    case eEmotions::Sad: _face.Expression.GoTo_Sad(); break;
-    case eEmotions::Worried: _face.Expression.GoTo_Worried(); break;
-    case eEmotions::Focused: _face.Expression.GoTo_Focused(); break;
-    case eEmotions::Annoyed: _face.Expression.GoTo_Annoyed(); break;
-    case eEmotions::Surprised: _face.Expression.GoTo_Surprised(); break;
-    case eEmotions::Skeptic: _face.Expression.GoTo_Skeptic(); break;
-    case eEmotions::Frustrated: _face.Expression.GoTo_Frustrated(); break;
-    case eEmotions::Unimpressed: _face.Expression.GoTo_Unimpressed(); break;
-    case eEmotions::Sleepy: _face.Expression.GoTo_Sleepy(); break;
-    case eEmotions::Suspicious: _face.Expression.GoTo_Suspicious(); break;
-    case eEmotions::Squint: _face.Expression.GoTo_Squint(); break;
-    case eEmotions::Furious: _face.Expression.GoTo_Furious(); break;
-    case eEmotions::Scared: _face.Expression.GoTo_Scared(); break;
-    case eEmotions::Awe: _face.Expression.GoTo_Awe(); break;
-    default: break;
+	case eEmotions::Normal: _face.Expression.GoTo_Normal(); break;
+	case eEmotions::Angry: _face.Expression.GoTo_Angry(); break;
+	case eEmotions::Glee: _face.Expression.GoTo_Glee(); break;
+	case eEmotions::Happy: _face.Expression.GoTo_Happy(); break;
+	case eEmotions::Sad: _face.Expression.GoTo_Sad(); break;
+	case eEmotions::Worried: _face.Expression.GoTo_Worried(); break;
+	case eEmotions::Focused: _face.Expression.GoTo_Focused(); break;
+	case eEmotions::Annoyed: _face.Expression.GoTo_Annoyed(); break;
+	case eEmotions::Surprised: _face.Expression.GoTo_Surprised(); break;
+	case eEmotions::Skeptic: _face.Expression.GoTo_Skeptic(); break;
+	case eEmotions::Frustrated: _face.Expression.GoTo_Frustrated(); break;
+	case eEmotions::Unimpressed: _face.Expression.GoTo_Unimpressed(); break;
+	case eEmotions::Sleepy: _face.Expression.GoTo_Sleepy(); break;
+	case eEmotions::Suspicious: _face.Expression.GoTo_Suspicious(); break;
+	case eEmotions::Squint: _face.Expression.GoTo_Squint(); break;
+	case eEmotions::Furious: _face.Expression.GoTo_Furious(); break;
+	case eEmotions::Scared: _face.Expression.GoTo_Scared(); break;
+	case eEmotions::Awe: _face.Expression.GoTo_Awe(); break;
+	default: break;
 	}
 }
 
 // ===== Face.cpp =====
-Face::Face(uint16_t screenWidth, uint16_t screenHeight, uint16_t eyeSize) 
+Face::Face(uint16_t screenWidth, uint16_t screenHeight, uint16_t eyeSize)
 	: LeftEye(*this), RightEye(*this), Blink(*this), Look(*this), Behavior(*this), Expression(*this) {
 
-  // Unlike almost every other Arduino library (and the I2C address scanner script etc.)
-  // u8g2 uses 8-bit I2C address, so we shift the 7-bit address left by one
+	// Unlike almost every other Arduino library (and the I2C address scanner script etc.)
+	// u8g2 uses 8-bit I2C address, so we shift the 7-bit address left by one
 
 	Width = screenWidth;
 	Height = screenHeight;
@@ -680,21 +700,21 @@ void Face::DoBlink() {
 }
 
 void Face::Update() {
-	if(RandomBehavior) Behavior.Update();
-	if(RandomLook) Look.Update();
-	if(RandomBlink)	Blink.Update();
+	if (RandomBehavior) Behavior.Update();
+	if (RandomLook) Look.Update();
+	if (RandomBlink)	Blink.Update();
 	Draw();
 }
 
 void Face::Draw() {
-  eyeSprite.fillSprite(TFT_BLACK);
+	eyeSprite.fillSprite(TFT_BLACK);
 
-  LeftEye.CenterX = CenterX - EyeSize / 2 - EyeInterDistance;
-  LeftEye.CenterY = CenterY;
+	LeftEye.CenterX = CenterX - EyeSize / 2 - EyeInterDistance;
+	LeftEye.CenterY = CenterY;
 
-  RightEye.CenterX = CenterX + EyeSize / 2 + EyeInterDistance;
-  RightEye.CenterY = CenterY;
+	RightEye.CenterX = CenterX + EyeSize / 2 + EyeInterDistance;
+	RightEye.CenterY = CenterY;
 
-  LeftEye.Draw();
-  RightEye.Draw();
+	LeftEye.Draw();
+	RightEye.Draw();
 }

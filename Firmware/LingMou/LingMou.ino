@@ -151,8 +151,14 @@ const unsigned long INFO_REDRAW_MS = 1000;
 
 NimBLEServer* pServer = nullptr;
 NimBLECharacteristic* pNotifyChar = nullptr;
+NimBLEAdvertising* pAdvertising = nullptr;
 bool deviceConnected = false;
 bool oldDeviceConnected = false;
+uint16_t bleConnHandle = BLE_HS_CONN_HANDLE_NONE;
+bool bleInitialized = false;
+bool bleAdvertising = false;
+unsigned long lastBleAdvertiseAttempt = 0;
+const unsigned long BLE_ADVERTISE_RETRY_MS = 2000;
 
 // BLE 回调会调用这些函数，提前声明以保持 Arduino 单文件编译兼容。
 void handleBleCommand(const String& msg);
@@ -162,6 +168,8 @@ void serviceWiFi();
 void setupAppServer();
 String buildTelemetryJson();
 void updateDisplayTimeFromUtcEpoch(time_t utcEpoch);
+bool startBleAdvertising();
+void initBle();
 
 
 // ==========================================
@@ -182,20 +190,28 @@ bool mpuReady = false;     // MPU6050 是否初始化成功
 // 🛠️ BLE 回调（照搬旧项目，加了断线重广播）
 // ==========================================
 class MyServerCallbacks : public NimBLEServerCallbacks {
-  void onConnect(NimBLEServer* s) {
+  void onConnect(NimBLEServer* s, NimBLEConnInfo& connInfo) override {
     deviceConnected = true;
-    DebugUSB.println("🔵 蓝牙已物理直连！");
-
+    bleAdvertising = false;
+    bleConnHandle = connInfo.getConnHandle();
+    DebugUSB.print("🔵 BLE connected: ");
+    DebugUSB.print(connInfo.getAddress().toString().c_str());
+    DebugUSB.print("  MTU=");
+    DebugUSB.println(connInfo.getMTU());
   }
-  void onDisconnect(NimBLEServer* s) {
+
+  void onDisconnect(NimBLEServer* s, NimBLEConnInfo& connInfo, int reason) override {
     deviceConnected = false;
-    DebugUSB.println("🔴 蓝牙意外断开！");
-    NimBLEDevice::startAdvertising();
+    bleAdvertising = false;
+    bleConnHandle = BLE_HS_CONN_HANDLE_NONE;
+    DebugUSB.print("🔴 BLE disconnected, reason=");
+    DebugUSB.println(reason);
+    // NimBLE-Arduino 2.x can auto-advertise on disconnect; loop watchdog is the fallback.
   }
 };
 
 class MyCallbacks : public NimBLECharacteristicCallbacks {
-  void onWrite(NimBLECharacteristic* pCharacteristic) {
+  void onWrite(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo) override {
     std::string rxValue = pCharacteristic->getValue();
     if (rxValue.length() > 0) {
       String msg = String(rxValue.c_str());
@@ -211,6 +227,125 @@ class MyCallbacks : public NimBLECharacteristicCallbacks {
     }
   }
 };
+
+
+// ==========================================
+// 📡 BLE 初始化与持续广播
+// ==========================================
+bool startBleAdvertising() {
+  if (!bleInitialized || pAdvertising == nullptr) return false;
+  if (deviceConnected) {
+    bleAdvertising = false;
+    return false;
+  }
+  if (pAdvertising->isAdvertising()) {
+    bleAdvertising = true;
+    return true;
+  }
+
+  const bool started = pAdvertising->start(0);  // 0 = advertise forever
+  bleAdvertising = started;
+  lastBleAdvertiseAttempt = millis();
+  if (started) {
+    DebugUSB.println("✅ BLE 广播已启动，可被手机/电脑扫描");
+  } else {
+    DebugUSB.println("❌ BLE 广播启动失败，将自动重试");
+  }
+  return started;
+}
+
+void initBle() {
+  if (bleInitialized) return;
+
+  DebugUSB.println("Initializing BLE (NimBLE-Arduino 2.x)...");
+
+  if (!NimBLEDevice::init("LingMou")) {
+    DebugUSB.println("❌ NimBLEDevice::init() failed");
+    return;
+  }
+
+  // ESP32-C6 supports BLE 5. Use legacy advertising for maximum phone/PC compatibility.
+  NimBLEDevice::setMTU(247);
+  NimBLEDevice::setPower(9, NimBLETxPowerType::Advertise);
+
+  pServer = NimBLEDevice::createServer();
+  if (pServer == nullptr) {
+    DebugUSB.println("❌ BLE server 创建失败");
+    return;
+  }
+
+  pServer->setCallbacks(new MyServerCallbacks());
+  pServer->advertiseOnDisconnect(true);
+
+  NimBLEService* pService = pServer->createService(SERVICE_UUID);
+  if (pService == nullptr) {
+    DebugUSB.println("❌ BLE service 创建失败");
+    return;
+  }
+
+  NimBLECharacteristic* pCmdChar = pService->createCharacteristic(
+    CHARACTERISTIC_UUID_RX,
+    NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR
+  );
+  if (pCmdChar == nullptr) {
+    DebugUSB.println("❌ BLE RX 特征创建失败");
+    return;
+  }
+  pCmdChar->setCallbacks(new MyCallbacks());
+
+  pNotifyChar = pService->createCharacteristic(
+    CHARACTERISTIC_UUID_TX,
+    NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
+  );
+  if (pNotifyChar == nullptr) {
+    DebugUSB.println("❌ BLE TX 特征创建失败");
+    return;
+  }
+
+  String initialTelemetry = buildTelemetryJson();
+  pNotifyChar->setValue((uint8_t*)initialTelemetry.c_str(), initialTelemetry.length());
+
+  pService->start();
+
+  pAdvertising = NimBLEDevice::getAdvertising();
+  if (pAdvertising == nullptr) {
+    DebugUSB.println("❌ BLE advertising 对象获取失败");
+    return;
+  }
+
+  // Put BOTH name and 128-bit service UUID in the PRIMARY legacy advertising packet.
+  // Flags (3 B) + "LingMou" name field (9 B) + 128-bit UUID field (18 B) = 30 B,
+  // which fits in the 31-byte legacy advertising payload.
+  NimBLEAdvertisementData advData;
+  const bool flagsOk = advData.setFlags(BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP);
+  const bool nameOk = advData.setName("LingMou");
+  const bool uuidOk = advData.addServiceUUID(SERVICE_UUID);
+  const size_t advLen = advData.getPayload().size();
+
+  pAdvertising->reset();
+  pAdvertising->setScanFilter(false, false);
+  pAdvertising->setDiscoverableMode(BLE_GAP_DISC_MODE_GEN);
+  pAdvertising->setConnectableMode(BLE_GAP_CONN_MODE_UND);
+  pAdvertising->setMinInterval(80);   // 50 ms
+  pAdvertising->setMaxInterval(160);  // 100 ms
+  pAdvertising->enableScanResponse(false);
+
+  const bool advDataOk = pAdvertising->setAdvertisementData(advData);
+
+  DebugUSB.printf(
+    "BLE adv config: flags=%d name=%d uuid=%d len=%u advData=%d\r\n",
+    flagsOk, nameOk, uuidOk, (unsigned)advLen, advDataOk
+  );
+
+  bleInitialized = true;
+
+  String bleAddress = NimBLEDevice::getAddress().toString().c_str();
+  DebugUSB.println("BLE address: " + bleAddress);
+
+  if (!startBleAdvertising()) {
+    DebugUSB.println("❌ BLE first advertising start failed");
+  }
+}
 
 
 // ==========================================
@@ -333,9 +468,40 @@ String buildStatusJson() {
 }
 
 void sendBleMessage(const String& message) {
-  if (!deviceConnected || pNotifyChar == nullptr) return;
-  pNotifyChar->setValue((uint8_t*)message.c_str(), message.length());
-  pNotifyChar->notify();
+  if (!deviceConnected || pNotifyChar == nullptr || message.length() == 0) return;
+
+  // 本地 setMTU(247) 不代表手机一定协商到 247。
+  // 默认 ATT MTU=23 时，单个 Notify 实际只能携带 20 bytes。
+  // 按当前 Peer MTU 分片，App 端会把连续片段重新拼成完整 JSON。
+  uint16_t mtu = 23;
+  if (pServer != nullptr && bleConnHandle != BLE_HS_CONN_HANDLE_NONE) {
+    const uint16_t peerMtu = pServer->getPeerMTU(bleConnHandle);
+    if (peerMtu >= 23) mtu = peerMtu;
+  }
+
+  size_t maxChunk = (mtu > 3) ? (size_t)(mtu - 3) : 20;
+  if (maxChunk > 180) maxChunk = 180;
+  if (maxChunk < 20) maxChunk = 20;
+
+  const uint8_t* bytes = reinterpret_cast<const uint8_t*>(message.c_str());
+  const size_t total = message.length();
+
+  for (size_t offset = 0; offset < total; offset += maxChunk) {
+    const size_t chunkLen = min(maxChunk, total - offset);
+    const bool ok = pNotifyChar->notify(bytes + offset, chunkLen, bleConnHandle);
+
+    if (!ok) {
+      DebugUSB.printf(
+        "BLE notify failed: offset=%u len=%u mtu=%u\n",
+        (unsigned)offset,
+        (unsigned)chunkLen,
+        (unsigned)mtu
+      );
+      break;
+    }
+
+    if (offset + chunkLen < total) delay(8);
+  }
 }
 
 void loadWifiCredentials() {
@@ -727,6 +893,9 @@ void setup() {
   DebugUSB.println("LingMou booting...");
   DebugUSB.println("======================");
 
+  // BLE 优先初始化：即使 LCD 或某个传感器初始化失败，设备仍应可被扫描和配网。
+  initBle();
+
   // 背光先关闭
   pinMode(LCD_BL_PIN, OUTPUT);
   analogWrite(LCD_BL_PIN, 0);
@@ -746,6 +915,9 @@ void setup() {
     }
   }
 
+  // 眼睛模式默认向右旋转 90°，使用横屏坐标系
+  gfx->setRotation(1);
+
   // 清成黑屏
   gfx->fillScreen(COLOR_BLACK);
 
@@ -759,11 +931,11 @@ void setup() {
   );
 
   // ==========================================
-  // 128x64 眼睛内存 Sprite
+  // 224x136 大眼睛内存 Sprite（适配 320x172 横屏）
   // ==========================================
   eyeSprite.setColorDepth(16);
 
-  if (eyeSprite.createSprite(128, 64) == nullptr) {
+  if (eyeSprite.createSprite(224, 136) == nullptr) {
     DebugUSB.println("ERROR: Eye sprite allocation FAILED!");
 
     while (true) {
@@ -804,7 +976,9 @@ void setup() {
 
 
   // Face 引擎
-  gFace = new Face(128, 64, 40);
+  gFace = new Face(224, 136, 60);
+  // 放大双眼之间的距离，与 1.5x 眼睛尺寸匹配
+  gFace->EyeInterDistance = 6;
 
   gFace->LeftEye.ApplyPreset(Preset_Normal);
   gFace->RightEye.ApplyPreset(Preset_Normal);
@@ -821,37 +995,6 @@ void setup() {
   // 按钮
   pinMode(BTN_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(BTN_PIN), onButtonPress, FALLING);
-
-  // BLE（保留旧 UUID，新增 Notify 特征）
-  // BLE（NimBLE 版本）
-  NimBLEDevice::init("LingMou");
-  NimBLEDevice::setMTU(247);
-  pServer = NimBLEDevice::createServer();
-  pServer->setCallbacks(new MyServerCallbacks());
-
-  NimBLEService* pService = pServer->createService(SERVICE_UUID);
-
-  // 旧项目：指令接收特征
-  NimBLECharacteristic* pCmdChar = pService->createCharacteristic(
-    CHARACTERISTIC_UUID_RX,
-    NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR
-  );
-  pCmdChar->setCallbacks(new MyCallbacks());
-
-  // 新增：遥测推送特征
-  pNotifyChar = pService->createCharacteristic(
-    CHARACTERISTIC_UUID_TX,
-    NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
-  );
-  String initialTelemetry = buildTelemetryJson();
-  pNotifyChar->setValue((uint8_t*)initialTelemetry.c_str(), initialTelemetry.length());
-
-  pService->start();
-  NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
-  pAdv->addServiceUUID(SERVICE_UUID);
-  pAdv->start();
-
-
 
   // Wi-Fi + NTP：从 NVS 读取配网信息，非阻塞连接；BLE 始终保持可用。
   loadWifiCredentials();
@@ -870,26 +1013,43 @@ void setup() {
 void loop() {
   unsigned long now = millis();
 
-  // ── 断线重广播 ──────────────
-  if (!deviceConnected && oldDeviceConnected) {
-    delay(500);
-    NimBLEDevice::startAdvertising();
+  // ── 断线重广播 / 广播看门狗 ──────────────
+  if (deviceConnected != oldDeviceConnected) {
     oldDeviceConnected = deviceConnected;
+    bleAdvertising = false;
   }
-  if (deviceConnected && !oldDeviceConnected) {
-    oldDeviceConnected = deviceConnected;
+
+  // Query the real NimBLE advertising state instead of trusting only a software flag.
+  if (bleInitialized && !deviceConnected &&
+      now - lastBleAdvertiseAttempt >= BLE_ADVERTISE_RETRY_MS) {
+    const bool actuallyAdvertising =
+      (pAdvertising != nullptr) && pAdvertising->isAdvertising();
+    bleAdvertising = actuallyAdvertising;
+    if (!actuallyAdvertising) {
+      DebugUSB.println("BLE watchdog: advertising stopped, restarting...");
+      startBleAdvertising();
+    } else {
+      lastBleAdvertiseAttempt = now;
+    }
   }
 
 
-  // ── 模式切换：清屏避免残影 ──────────────────
+  // ── 模式切换：Eye 横屏 / Info 竖屏，并清屏避免残影 ──
   if (modeChanged) {
     modeChanged = false;
-    gfx->fillScreen(COLOR_BLACK);
 
-    if (currentMode == MODE_INFO) {
+    if (currentMode == MODE_EYE) {
+      // 眼睛模式：向右旋转 90°，横屏显示
+      gfx->setRotation(1);
+    } else {
+      // 信息模式：恢复原来的竖屏显示
+      gfx->setRotation(0);
       infoLayoutDirty = true;
       lastInfoDraw = 0;
     }
+
+    // 改变方向后再清屏，避免旋转前后的残影
+    gfx->fillScreen(COLOR_BLACK);
   }
 
 
@@ -961,13 +1121,17 @@ if (now - lastSensorRead >= SENSOR_INTERVAL) {
     if (gFace && (uint32_t)(millis() - lastFrameMs) >= EYES_FRAME_MS) {
       gFace->Update();
 
+      // 横屏状态下，把 224x136 大眼睛 Sprite 自动居中
+      int16_t eyeX = (gfx->width()  - 224) / 2;
+      int16_t eyeY = (gfx->height() - 136) / 2;
+
       // 把 TFT_eSPI 的内存 Sprite 交给 Arduino_GFX 输出
       gfx->draw16bitRGBBitmap(
-        22,
-        128,
+        eyeX,
+        eyeY,
         (uint16_t *)eyeSprite.getPointer(),
-        128,
-        64
+        224,
+        136
       );
 
       lastFrameMs = millis();

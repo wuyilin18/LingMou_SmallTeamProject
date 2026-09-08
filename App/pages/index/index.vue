@@ -263,6 +263,8 @@ export default {
       charId: 'beb5483e-36e1-4688-b7f5-ea07361b26a8',    // ESP32 默认指令写入特征值 UUID
       txCharId: 'beb5483e-36e1-4688-b7f5-ea07361b26a9',  // ESP32 遥测通知特征值 UUID
       targetDeviceName: 'LingMou', // 锁定寻找名为 LingMou 的设备
+      targetDeviceId: '',          // 成功识别后记住设备地址；名称缺失时也可再次识别
+      bleScanMode: 'idle',         // idle | service | fallback
       
       // 🔁 正反两面主卡片
       activeMode: 'eye',
@@ -289,9 +291,15 @@ export default {
         password: ''
       },
       wifiPollTimer: null,
+      wifiBleStatusTimer: null,
+      wifiBleStatusDeadline: 0,
       modeFlipTimer: null,
       bleConnectionListenerReady: false,
       bleValueListenerReady: false,
+      bleAdapterReady: false,
+      bleFoundListenerReady: false,
+      bleInitInProgress: false,
+      scanTimeoutTimer: null,
 
       // 物理外挂状态
       isIllusionOn: false,
@@ -366,7 +374,12 @@ export default {
   },
   onUnload() {
     this.stopWifiPolling();
+    this.stopBleWifiStatusPolling();
     if (this.modeFlipTimer) clearTimeout(this.modeFlipTimer);
+    if (this.scanTimeoutTimer) {
+      clearTimeout(this.scanTimeoutTimer);
+      this.scanTimeoutTimer = null;
+    }
     this.closeBluetooth();
   },
   methods: {
@@ -400,19 +413,196 @@ export default {
     // ==========================================
     // 📡 纯血 BLE 蓝牙控制中枢引擎
     // ==========================================
+    getMissingBleApis() {
+      const requiredApis = [
+        'openBluetoothAdapter',
+        'startBluetoothDevicesDiscovery',
+        'stopBluetoothDevicesDiscovery',
+        'onBluetoothDeviceFound',
+        'createBLEConnection',
+        'getBLEDeviceServices',
+        'getBLEDeviceCharacteristics',
+        'notifyBLECharacteristicValueChange',
+        'writeBLECharacteristicValue'
+      ];
+      return requiredApis.filter((name) => typeof uni[name] !== 'function');
+    },
+
+    showBleRuntimeError(missingApis) {
+      const missing = missingApis || this.getMissingBleApis();
+      console.error('BLE API unavailable:', missing);
+
+      // H5/Web 没有 uni-app BLE API。App 中出现这个错误通常是 Bluetooth 模块
+      // 没有打进基座/安装包，需要在 manifest.json 的 App模块配置中启用 Bluetooth。
+      this.isScanning = false;
+      this.bleAdapterReady = false;
+      this.statusText = '当前运行环境没有 BLE 能力';
+
+      uni.showModal({
+        title: 'BLE 功能不可用',
+        content:
+          '当前运行环境缺少 ' + (missing[0] || 'BLE') +
+          '。如果正在浏览器/H5调试，请改为运行到 Android/iOS 真机；' +
+          '如果已经是真机 App，请在 manifest.json → App模块配置中勾选 Bluetooth(低功耗蓝牙)，然后重新制作自定义基座或重新打包安装。',
+        showCancel: false
+      });
+    },
+
+    requestAndroidBlePermissions(done) {
+      // #ifdef APP-PLUS
+      const sys = uni.getSystemInfoSync();
+      const platform = String(sys.platform || '').toLowerCase();
+
+      if (platform === 'android' && typeof plus !== 'undefined' && plus.android) {
+        const versionText = String(sys.system || (plus.os && plus.os.version) || '');
+        const versionMatch = versionText.match(/(\d+)/);
+        const androidMajor = versionMatch ? Number(versionMatch[1]) : 0;
+
+        // Android 12+ 使用“附近的设备”权限；Android 11- BLE 扫描通常需要定位权限。
+        const permissions = androidMajor >= 12
+          ? [
+              'android.permission.BLUETOOTH_SCAN',
+              'android.permission.BLUETOOTH_CONNECT'
+            ]
+          : [
+              'android.permission.ACCESS_FINE_LOCATION'
+            ];
+
+        plus.android.requestPermissions(
+          permissions,
+          (result) => {
+            const deniedPresent = result.deniedPresent || [];
+            const deniedAlways = result.deniedAlways || [];
+            const denied = deniedPresent.concat(deniedAlways);
+
+            if (denied.length) {
+              this.statusText = '缺少蓝牙扫描权限';
+              uni.showModal({
+                title: '需要蓝牙权限',
+                content: '请允许“附近的设备/蓝牙”权限后再搜索 LingMou。若之前选择了不再询问，请到系统设置中手动开启。',
+                showCancel: false
+              });
+              done(false);
+              return;
+            }
+            done(true);
+          },
+          (err) => {
+            console.error('申请 BLE 权限失败:', err);
+            this.statusText = '蓝牙权限申请失败';
+            uni.showToast({ title: '蓝牙权限申请失败', icon: 'none' });
+            done(false);
+          }
+        );
+        return;
+      }
+      // #endif
+
+      done(true);
+    },
+
+    openBleAdapter(done) {
+      if (this.bleAdapterReady) {
+        done(true);
+        return;
+      }
+
+      const missingApis = this.getMissingBleApis();
+      if (missingApis.length) {
+        this.showBleRuntimeError(missingApis);
+        done(false);
+        return;
+      }
+
+      if (this.bleInitInProgress) {
+        setTimeout(() => this.openBleAdapter(done), 250);
+        return;
+      }
+
+      this.bleInitInProgress = true;
+      uni.openBluetoothAdapter({
+        success: () => {
+          this.bleInitInProgress = false;
+          this.bleAdapterReady = true;
+          console.log('BLE adapter ready');
+
+          if (typeof uni.getBluetoothAdapterState === 'function') {
+            uni.getBluetoothAdapterState({
+              success: (state) => {
+                console.log('BLE adapter state:', state);
+                if (!state.available) {
+                  this.bleAdapterReady = false;
+                  this.statusText = '请打开手机蓝牙';
+                  uni.showToast({ title: '请打开手机蓝牙', icon: 'none' });
+                  done(false);
+                  return;
+                }
+                done(true);
+              },
+              fail: () => done(true)
+            });
+          } else {
+            done(true);
+          }
+        },
+        fail: (err) => {
+          this.bleInitInProgress = false;
+          this.bleAdapterReady = false;
+          console.error('openBluetoothAdapter failed:', err);
+
+          const code = Number(err && err.errCode);
+          if (code === 10001) {
+            this.statusText = '手机蓝牙未开启';
+            uni.showToast({ title: '请先打开手机蓝牙', icon: 'none' });
+          } else {
+            this.statusText = '蓝牙模块初始化失败';
+            uni.showModal({
+              title: '蓝牙初始化失败',
+              content: 'errCode=' + (err && err.errCode !== undefined ? err.errCode : 'unknown') +
+                ' ' + (err && err.errMsg ? err.errMsg : ''),
+              showCancel: false
+            });
+          }
+          done(false);
+        }
+      });
+    },
+
+    ensureBleReady(done) {
+      const missingApis = this.getMissingBleApis();
+      if (missingApis.length) {
+        this.showBleRuntimeError(missingApis);
+        done(false);
+        return;
+      }
+
+      this.requestAndroidBlePermissions((permissionOk) => {
+        if (!permissionOk) {
+          done(false);
+          return;
+        }
+        this.openBleAdapter(done);
+      });
+    },
+
     initBluetooth() {
+      try {
+        this.targetDeviceId = String(uni.getStorageSync('lingmouBleDeviceId') || '');
+      } catch (e) {
+        this.targetDeviceId = '';
+      }
+
       // #ifdef H5
-      uni.showToast({ title: '网页端不支持蓝牙，请在真机或小程序运行！', icon: 'none' });
+      this.bleAdapterReady = false;
+      this.statusText = 'H5/浏览器不支持 BLE，请运行到真机 App';
+      console.warn('BLE is not supported by uni-app H5/Web runtime.');
       return;
       // #endif
 
-      uni.openBluetoothAdapter({
-        success: (res) => {
-          console.log('蓝牙模块初始化成功');
-        },
-        fail: (err) => {
-          uni.showToast({ title: '请先打开手机蓝牙！', icon: 'none' });
-          this.statusText = '手机蓝牙未开启';
+      this.ensureBleReady((ok) => {
+        if (ok) {
+          this.statusText = '蓝牙已就绪，点击寻呼设备';
+          this.registerBleFoundListener();
         }
       });
     },
@@ -420,55 +610,240 @@ export default {
     toggleBleConnection() {
       if (this.isConnected) {
         this.disconnectBle();
-      } else {
-        if (this.isScanning) {
-          this.stopScan();
-        } else {
-          this.scanForLingMou();
-        }
+        return;
       }
+
+      if (this.isScanning) {
+        this.stopScan();
+        this.statusText = '已停止寻呼';
+        return;
+      }
+
+      this.ensureBleReady((ok) => {
+        if (!ok) return;
+        this.scanForLingMou();
+      });
     },
 
-    scanForLingMou() {
-      this.isScanning = true;
-      this.statusText = '正在扫描周围空气中的灵眸信号...';
-      
-      uni.startBluetoothDevicesDiscovery({
-        allowDuplicatesKey: false,
-        success: (res) => {
-          // 监听寻呼结果
-          uni.onBluetoothDeviceFound((devices) => {
-            let deviceList = devices.devices;
-            for (let i = 0; i < deviceList.length; i++) {
-              if (deviceList[i].name === this.targetDeviceName || deviceList[i].localName === this.targetDeviceName) {
-                console.log('发现灵眸本体：', deviceList[i]);
-                this.deviceId = deviceList[i].deviceId;
-                this.stopScan();
-                this.connectBle();
-                break;
-              }
-            }
-          });
-        },
-        fail: (err) => {
-          this.isScanning = false;
-          uni.showToast({ title: '扫描启动失败', icon: 'none' });
+    registerBleFoundListener() {
+      if (this.bleFoundListenerReady) return;
+      if (typeof uni.onBluetoothDeviceFound !== 'function') {
+        this.showBleRuntimeError(['onBluetoothDeviceFound']);
+        return;
+      }
+
+      uni.onBluetoothDeviceFound((result) => {
+        const deviceList = result && Array.isArray(result.devices)
+          ? result.devices
+          : (result && result.deviceId ? [result] : []);
+
+        if (!deviceList.length) return;
+
+        for (let i = 0; i < deviceList.length; i++) {
+          const device = deviceList[i] || {};
+          const name = String(device.localName || device.name || '').trim();
+          const serviceUUIDs = Array.isArray(device.advertisServiceUUIDs)
+            ? device.advertisServiceUUIDs.map((uuid) => String(uuid).toLowerCase())
+            : [];
+
+          console.log(
+            'BLE found:',
+            name || '(no name)',
+            device.deviceId,
+            'RSSI=', device.RSSI,
+            'services=', serviceUUIDs
+          );
+
+          const nameMatched =
+            name.toLowerCase() === this.targetDeviceName.toLowerCase();
+          const serviceMatched =
+            serviceUUIDs.indexOf(this.serviceId.toLowerCase()) >= 0 ||
+            serviceUUIDs.some((uuid) => uuid.indexOf('4fafc201') >= 0);
+          const rememberedMatched =
+            !!this.targetDeviceId &&
+            String(device.deviceId || '').toLowerCase() === this.targetDeviceId.toLowerCase();
+
+          // services:[LingMou Service UUID] 会由 Android 原生扫描器先过滤。
+          // 某些 HTML5+ Runtime 回调仍可能把 name/services 返回为空，
+          // 所以 service 扫描阶段收到的设备直接作为 LingMou 候选。
+          const nativeServiceFilterMatched = this.bleScanMode === 'service';
+
+          if (nameMatched || serviceMatched || rememberedMatched || nativeServiceFilterMatched) {
+            console.log(
+              'LingMou candidate:',
+              device.deviceId,
+              'match=',
+              nameMatched ? 'name' :
+              serviceMatched ? 'advertised-service' :
+              rememberedMatched ? 'remembered-id' : 'native-service-filter'
+            );
+            this.deviceId = device.deviceId;
+            this.statusText = '已发现 LingMou，正在连接...';
+            this.stopScan();
+            setTimeout(() => this.connectBle(), 180);
+            break;
+          }
         }
       });
 
-      // 10秒扫描超时保护
-      setTimeout(() => {
-        if (this.isScanning) {
+      this.bleFoundListenerReady = true;
+    },
+
+    scanForLingMou() {
+      const missingApis = this.getMissingBleApis();
+      if (missingApis.length) {
+        this.showBleRuntimeError(missingApis);
+        return;
+      }
+
+      if (!this.bleAdapterReady) {
+        this.ensureBleReady((ok) => {
+          if (ok) this.scanForLingMou();
+        });
+        return;
+      }
+
+      this.registerBleFoundListener();
+      this.startLingMouServiceScan();
+    },
+
+    startLingMouServiceScan() {
+      this.isScanning = true;
+      this.bleScanMode = 'service';
+      this.statusText = '正在按 LingMou 服务搜索...';
+
+      console.log('BLE service-filter scan UUID:', this.serviceId);
+
+      uni.startBluetoothDevicesDiscovery({
+        services: [this.serviceId],
+        allowDuplicatesKey: true,
+        interval: 0,
+        powerLevel: 'high',
+        success: (res) => {
+          console.log('BLE service-filter discovery started:', res);
+        },
+        fail: (err) => {
+          console.error('BLE service-filter discovery failed:', err);
+          this.isScanning = false;
+          this.bleScanMode = 'idle';
+
+          const code = Number(err && err.errCode);
+          if (code === 10000) {
+            this.bleAdapterReady = false;
+            this.statusText = '蓝牙未初始化，正在重试';
+            this.ensureBleReady((ok) => {
+              if (ok) this.scanForLingMou();
+            });
+            return;
+          }
+          if (code === 10001) {
+            this.statusText = '请打开手机蓝牙';
+            uni.showToast({ title: '请打开手机蓝牙', icon: 'none' });
+            return;
+          }
+
+          console.warn('Service-filter scan unavailable, fallback to normal scan.');
+          setTimeout(() => this.startLingMouFallbackScan(), 250);
+        }
+      });
+
+      if (this.scanTimeoutTimer) clearTimeout(this.scanTimeoutTimer);
+      this.scanTimeoutTimer = setTimeout(() => {
+        this.scanTimeoutTimer = null;
+        if (!this.isScanning || this.bleScanMode !== 'service') return;
+
+        console.warn('No device returned by service filter; switching to fallback scan.');
+        uni.stopBluetoothDevicesDiscovery({
+          complete: () => {
+            this.isScanning = false;
+            this.bleScanMode = 'idle';
+            setTimeout(() => this.startLingMouFallbackScan(), 250);
+          }
+        });
+      }, 6000);
+    },
+
+    startLingMouFallbackScan() {
+      this.isScanning = true;
+      this.bleScanMode = 'fallback';
+      this.statusText = '正在扫描 LingMou...';
+
+      uni.startBluetoothDevicesDiscovery({
+        allowDuplicatesKey: true,
+        interval: 0,
+        powerLevel: 'high',
+        success: (res) => {
+          console.log('BLE fallback discovery started:', res);
+
+          if (typeof uni.getBluetoothDevices === 'function') {
+            setTimeout(() => {
+              if (!this.isScanning || this.bleScanMode !== 'fallback') return;
+
+              uni.getBluetoothDevices({
+                success: (cacheRes) => {
+                  const devices = cacheRes.devices || [];
+                  for (let i = 0; i < devices.length; i++) {
+                    const device = devices[i] || {};
+                    const name = String(device.localName || device.name || '').trim();
+                    const rememberedMatched =
+                      !!this.targetDeviceId &&
+                      String(device.deviceId || '').toLowerCase() === this.targetDeviceId.toLowerCase();
+
+                    if (
+                      name.toLowerCase() === this.targetDeviceName.toLowerCase() ||
+                      rememberedMatched
+                    ) {
+                      console.log('Found LingMou from cache:', device);
+                      this.deviceId = device.deviceId;
+                      this.statusText = '已发现 LingMou，正在连接...';
+                      this.stopScan();
+                      setTimeout(() => this.connectBle(), 180);
+                      break;
+                    }
+                  }
+                }
+              });
+            }, 1000);
+          }
+        },
+        fail: (err) => {
+          console.error('BLE fallback discovery failed:', err);
+          this.isScanning = false;
+          this.bleScanMode = 'idle';
+          this.statusText = '扫描启动失败';
+          uni.showModal({
+            title: 'BLE 扫描失败',
+            content: 'errCode=' + (err && err.errCode !== undefined ? err.errCode : 'unknown') +
+              ' ' + (err && err.errMsg ? err.errMsg : ''),
+            showCancel: false
+          });
+        }
+      });
+
+      if (this.scanTimeoutTimer) clearTimeout(this.scanTimeoutTimer);
+      this.scanTimeoutTimer = setTimeout(() => {
+        this.scanTimeoutTimer = null;
+        if (this.isScanning && this.bleScanMode === 'fallback') {
           this.stopScan();
-          this.statusText = '周围未发现灵眸信号';
-          uni.showToast({ title: '扫描超时', icon: 'none' });
+          this.statusText = '未发现 LingMou，请确认设备正在广播';
+          uni.showToast({ title: '未发现 LingMou', icon: 'none' });
         }
       }, 10000);
     },
 
     stopScan() {
-      uni.stopBluetoothDevicesDiscovery();
+      if (this.scanTimeoutTimer) {
+        clearTimeout(this.scanTimeoutTimer);
+        this.scanTimeoutTimer = null;
+      }
+
+      if (typeof uni.stopBluetoothDevicesDiscovery === 'function' && this.bleAdapterReady) {
+        uni.stopBluetoothDevicesDiscovery({
+          complete: () => {}
+        });
+      }
       this.isScanning = false;
+      this.bleScanMode = 'idle';
     },
 
     connectBle() {
@@ -485,13 +860,31 @@ export default {
           this.bleRxBuffer = '';
           uni.showToast({ title: '蓝牙已接管！', icon: 'success' });
           this.registerBleListeners();
-          setTimeout(() => { this.discoverLingMouService(); }, 350);
+
+          // 主动协商较大 MTU，减少 ESP32 -> App 的 JSON Notify 被截断的概率。
+          if (typeof uni.setBLEMTU === 'function') {
+            uni.setBLEMTU({
+              deviceId: this.deviceId,
+              mtu: 247,
+              success: (mtuRes) => console.log('BLE MTU request success:', mtuRes),
+              fail: (mtuErr) => console.warn('BLE MTU request failed, continue safely:', mtuErr),
+              complete: () => {
+                setTimeout(() => { this.discoverLingMouService(); }, 350);
+              }
+            });
+          } else {
+            setTimeout(() => { this.discoverLingMouService(); }, 350);
+          }
         },
         fail: (err) => {
           uni.hideLoading();
           this.isConnected = false;
-          this.statusText = '连接失败，请靠近设备';
-          uni.showToast({ title: '连接失败', icon: 'none' });
+          console.error('createBLEConnection failed:', this.deviceId, err);
+          this.statusText = '连接失败：' + (err && err.errCode !== undefined ? err.errCode : 'unknown');
+          uni.showToast({
+            title: '连接失败 ' + (err && err.errCode !== undefined ? err.errCode : ''),
+            icon: 'none'
+          });
         }
       });
     },
@@ -504,6 +897,7 @@ export default {
             this.isConnected = false;
             this.wifiConnecting = false;
             this.statusText = '蓝牙意外断开';
+            this.stopBleWifiStatusPolling();
             this.stopWifiPolling();
             uni.showToast({ title: '连接已断开', icon: 'none' });
           }
@@ -535,6 +929,16 @@ export default {
             return;
           }
           this.serviceId = target.uuid;
+
+          // GATT 服务已二次确认，这台设备就是 LingMou。
+          this.targetDeviceId = this.deviceId;
+          try {
+            uni.setStorageSync('lingmouBleDeviceId', this.deviceId);
+          } catch (e) {
+            console.warn('Unable to remember LingMou deviceId:', e);
+          }
+          console.log('LingMou GATT service confirmed:', this.deviceId, target.uuid);
+
           uni.getBLEDeviceCharacteristics({
             deviceId: this.deviceId,
             serviceId: target.uuid,
@@ -572,10 +976,22 @@ export default {
         state: true,
         success: () => {
           this.statusText = '物理直连已就绪';
-          this.sendBLECommand(`TIME=${Math.floor(Date.now() / 1000)}`, () => {
-            setTimeout(() => this.sendBLECommand('GET_STATUS'), 90);
-          });
-          uni.readBLECharacteristicValue({ deviceId: this.deviceId, serviceId, characteristicId });
+
+          // 某些 Android 机型刚订阅 Notify 后立即写入会出现 10008，
+          // 稍微延迟再同步时钟和状态。
+          setTimeout(() => {
+            this.sendBLECommand(`TIME=${Math.floor(Date.now() / 1000)}`, () => {
+              setTimeout(() => this.sendBLECommand('GET_STATUS'), 180);
+            });
+          }, 350);
+
+          setTimeout(() => {
+            uni.readBLECharacteristicValue({
+              deviceId: this.deviceId,
+              serviceId,
+              characteristicId
+            });
+          }, 500);
         },
         fail: () => { this.statusText = '通知订阅失败，可继续使用控制功能'; }
       });
@@ -626,9 +1042,13 @@ export default {
 
     handleBlePayload(data) {
       if (!data || typeof data !== 'object') return;
+
+      console.log('BLE payload:', data);
+
       if (data.telemetry && typeof data.telemetry === 'object') {
         this.handleBlePayload(data.telemetry);
       }
+
       if (Object.prototype.hasOwnProperty.call(data, 't') || Object.prototype.hasOwnProperty.call(data, 'h')) {
         this.telemetry = {
           temperature: data.t === null ? null : Number(data.t),
@@ -639,40 +1059,68 @@ export default {
         };
         this.telemetrySource = this.wifiConnected ? 'WiFi' : 'BLE';
       }
+
+      if (data.ssid !== undefined) this.wifiSsid = data.ssid || '';
+      if (data.ip !== undefined && data.ip) this.wifiIp = data.ip;
+
+      const hasWifiFlag = data.wifi !== undefined;
+      const wifiUp = hasWifiFlag && Number(data.wifi) === 1;
+      const hasConnectingFlag = data.connecting !== undefined;
+      const connecting = hasConnectingFlag && Number(data.connecting) === 1;
+
+      if (hasWifiFlag) this.wifiConnected = wifiUp;
+      if (hasConnectingFlag) this.wifiConnecting = connecting;
+
       if (data.type === 'wifi') {
-        this.wifiConnected = Number(data.ok) === 1 && data.state !== 'connecting' ? true : this.wifiConnected;
-        this.wifiConnecting = data.state === 'connecting' || (data.ok === 1 && !data.ip);
-        if (data.state === 'connecting') this.wifiConfigState = 'waiting';
-        if (data.ip) {
-          this.wifiIp = data.ip;
-          this.wifiConnecting = false;
-          this.wifiConfigState = 'success';
-          this.wifiConfigSaving = false;
-          this.startWifiPolling();
-          if (this.wifiDrawerVisible) {
-            setTimeout(() => { this.wifiDrawerVisible = false; }, 1000);
-          }
+        if (data.state === 'connecting') {
+          this.wifiConnected = false;
+          this.wifiConnecting = true;
+          this.wifiConfigState = 'waiting';
         }
-        if (data.ok === 0) {
+
+        if (Number(data.ok) === 0) {
           this.wifiConnected = false;
           this.wifiConnecting = false;
           this.wifiConfigState = 'error';
           this.wifiConfigSaving = false;
+          this.stopBleWifiStatusPolling();
+        }
+
+        if (Number(data.ok) === 1 && data.ip) {
+          this.wifiConnected = true;
+          this.wifiConnecting = false;
+          this.wifiConfigState = 'success';
+          this.wifiConfigSaving = false;
+          this.stopBleWifiStatusPolling();
         }
       }
-      if (data.wifi !== undefined) this.wifiConnected = Number(data.wifi) === 1;
-      if (data.connecting !== undefined) {
-        this.wifiConnecting = Number(data.connecting) === 1;
-        if (this.wifiConnecting) this.wifiConfigState = 'waiting';
+
+      // 关键：GET_STATUS 没有 type:"wifi"，但 wifi=1 + ip 已足以确认设备联网。
+      // 手机本身作为热点时，即使 HTTP 访问热点客户端失败，也不应一直显示“连接中”。
+      if (this.wifiConnected && this.wifiIp) {
+        this.wifiConnecting = false;
+        this.wifiConfigState = 'success';
+        this.wifiConfigSaving = false;
+        this.stopBleWifiStatusPolling();
+
+        // WiFi HTTP 是增强通道；不可达时仍继续用 BLE 收遥测。
+        this.startWifiPolling();
+
+        if (this.wifiDrawerVisible) {
+          setTimeout(() => {
+            if (this.wifiConfigState === 'success') this.wifiDrawerVisible = false;
+          }, 900);
+        }
+      } else if (this.wifiConnecting || connecting) {
+        this.wifiConfigState = 'waiting';
       }
-      if (data.ssid !== undefined) this.wifiSsid = data.ssid || '';
-      if (data.ip) this.wifiIp = data.ip;
-      if (data.wifi === 1 && this.wifiIp) this.startWifiPolling();
+
       if (data.state === 'cleared') {
         this.wifiConnected = false;
         this.wifiConnecting = false;
         this.wifiIp = '';
         this.wifiConfigState = 'idle';
+        this.stopBleWifiStatusPolling();
         this.stopWifiPolling();
       }
     },
@@ -685,6 +1133,7 @@ export default {
             this.isConnected = false;
             this.statusText = '蓝牙已断开';
             this.wifiConnecting = false;
+            this.stopBleWifiStatusPolling();
             this.stopWifiPolling();
           }
         });
@@ -692,8 +1141,22 @@ export default {
     },
 
     closeBluetooth() {
+      if (this.scanTimeoutTimer) {
+        clearTimeout(this.scanTimeoutTimer);
+        this.scanTimeoutTimer = null;
+      }
+      this.stopScan();
       this.disconnectBle();
-      uni.closeBluetoothAdapter();
+
+      if (typeof uni.closeBluetoothAdapter === 'function' && this.bleAdapterReady) {
+        uni.closeBluetoothAdapter({
+          complete: () => {
+            this.bleAdapterReady = false;
+          }
+        });
+      } else {
+        this.bleAdapterReady = false;
+      }
     },
 
     toggleMode() {
@@ -765,10 +1228,49 @@ export default {
           this.sendBLECommand('WIFI_CONNECT', () => {
             this.wifiConfigSaving = false;
             this.wifiConfigState = 'waiting';
+            this.startBleWifiStatusPolling();
             uni.showToast({ title: '已发送 WiFi 配置', icon: 'success' });
           });
         });
       });
+    },
+
+    startBleWifiStatusPolling() {
+      this.stopBleWifiStatusPolling();
+      if (!this.isConnected) return;
+
+      this.wifiBleStatusDeadline = Date.now() + 25000;
+
+      const queryStatus = () => {
+        if (!this.isConnected || this.wifiConfigState === 'success') {
+          this.stopBleWifiStatusPolling();
+          return;
+        }
+
+        if (Date.now() >= this.wifiBleStatusDeadline) {
+          this.stopBleWifiStatusPolling();
+          if (!this.wifiConnected) {
+            this.wifiConnecting = false;
+            this.wifiConfigState = 'error';
+            this.wifiConfigSaving = false;
+            uni.showToast({ title: '未收到设备联网状态', icon: 'none' });
+          }
+          return;
+        }
+
+        this.sendBLECommand('GET_STATUS');
+      };
+
+      setTimeout(queryStatus, 800);
+      this.wifiBleStatusTimer = setInterval(queryStatus, 1200);
+    },
+
+    stopBleWifiStatusPolling() {
+      if (this.wifiBleStatusTimer) {
+        clearInterval(this.wifiBleStatusTimer);
+        this.wifiBleStatusTimer = null;
+      }
+      this.wifiBleStatusDeadline = 0;
     },
 
     startWifiPolling() {
@@ -799,7 +1301,10 @@ export default {
           this.telemetrySource = 'WiFi';
           this.handleBlePayload(payload);
         },
-        fail: () => {
+        fail: (err) => {
+          // 同一台手机作为热点时，部分 ROM 会限制“热点宿主 -> 热点客户端”的访问；
+          // 也可能是 Android 明文 HTTP 策略阻止请求。BLE 状态仍可确认 WiFi 已连接。
+          console.warn('WiFi HTTP telemetry unavailable, keep BLE fallback:', err);
           this.telemetrySource = 'BLE';
         }
       });
@@ -1033,13 +1538,50 @@ page { background-color: transparent; height: 100%; }
 
 .ble-scan-btn { 
   background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end)); 
-  border: none; border-radius: 20px; padding: 0 20px; height: 38px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 15px rgba(8, 145, 178, 0.3); transition: all 0.3s; margin: 0;
+  border: none;
+  border-radius: 20px;
+  padding: 0 14px;
+  width: 104px;
+  min-width: 104px;
+  height: 38px;
+  min-height: 38px;
+  flex: 0 0 104px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  white-space: nowrap;
+  line-height: 1;
+  box-shadow: 0 4px 15px rgba(8, 145, 178, 0.3);
+  transition: all 0.3s;
+  margin: 0;
 }
 .ble-scan-btn::after { display: none; }
 .ble-scan-btn:active { transform: scale(0.95); }
 .btn-scanning { animation: pulse-btn 1.5s infinite alternate; background: var(--btn-bg); border: 1px solid var(--border-color); box-shadow: none;}
 .btn-scanning .btn-text { color: var(--text-main); }
-.btn-text { font-size: 13px; font-weight: 600; color: white; }
+.btn-text {
+  display: block;
+  width: 100%;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 38px;
+  text-align: center;
+  color: white;
+  white-space: nowrap;
+  word-break: keep-all;
+  overflow-wrap: normal;
+}
+.status-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+.card-bottom-bar {
+  gap: 12px;
+}
 
 @keyframes pulse-btn { 0% { opacity: 1; } 100% { opacity: 0.6; } }
 
@@ -1179,6 +1721,28 @@ page { background-color: transparent; height: 100%; }
 @media (max-width: 560px) {
   .top-grid { grid-template-columns: minmax(0, 1fr); }
   .top-grid .status-card-wide, .mode-toggle-card { min-height: 142px; }
+
+  /* 手机窄屏：状态文字允许收缩，但 BLE 按钮始终保留完整单行宽度 */
+  .card-bottom-bar {
+    gap: 10px;
+    align-items: center;
+  }
+  .status-main {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .sub-title {
+    display: block;
+    line-height: 1.55;
+    word-break: break-word;
+  }
+  .ble-scan-btn {
+    width: 100px;
+    min-width: 100px;
+    flex-basis: 100px;
+    padding: 0 10px;
+  }
+
   .mode-toggle-card { border-radius: 28px 12px 28px 12px; }
   .face-title { font-size: 18px; }
   .metric-topline { gap: 9px; }
