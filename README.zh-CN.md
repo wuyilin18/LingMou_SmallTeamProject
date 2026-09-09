@@ -1,4 +1,4 @@
-# 灵眸 LingMou — 基于多模态感知的随身智能交互挂件
+# 灵眸 LingMou — 基于多模态感知的随身智能交互挂件（面包板测试版）
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
@@ -16,12 +16,14 @@
   <img src="https://img.shields.io/badge/platform-ESP32--C6-E7352C.svg" alt="Platform: ESP32-C6">
   <img src="https://img.shields.io/badge/framework-Arduino-00979D.svg" alt="Framework: Arduino">
   <img src="https://img.shields.io/badge/app-Uni--app%20%2F%20Vue-42B883.svg" alt="App: Uni-app / Vue">
-  <img src="https://img.shields.io/badge/status-Active%20Prototype-success.svg" alt="Status: Active Prototype">
+  <img src="https://img.shields.io/badge/status-Breadboard%20Prototype-orange.svg" alt="Status: Breadboard Prototype">
 </p>
 
 ## 概述
 
 **灵眸 (LingMou)** 是一个以 **ESP32-C6** 和 **1.47 寸 ST7789 LCD** 为核心的低成本、轻量化**基于多模态感知的随身智能交互挂件**。它把姿态感知（MPU6050）、环境感知（AHT20）、BLE + WiFi 双通道通信，以及 Uni-app 移动端控制器融合到一个随身小挂件里——不只是"显示"信息，更能**感知、决策、表达、响应**。
+
+> **版本状态：面包板测试版。** 当前版本为**面包板测试版**，用于功能验证与快速迭代，**尚未**进行正式 PCB 设计；正式的 PCB 版图与外壳设计将在量产版本中完成。
 
 倾斜它、摇晃它、或通过 App 与它交互：LCD 上的眼睛会实时地眨眼、凝视、受惊，并在 **18 种情绪**之间切换。
 

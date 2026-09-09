@@ -1,4 +1,4 @@
-# 灵眸 LingMou — Wearable Smart Interactive Pendant Based on Multimodal Perception
+# 灵眸 LingMou — Wearable Smart Interactive Pendant Based on Multimodal Perception (Breadboard Prototype)
 
 [简体中文](README.zh-CN.md) | [English](README.md)
 
@@ -17,7 +17,7 @@
   <img src="https://img.shields.io/badge/framework-Arduino-00979D.svg" alt="Framework: Arduino">
   <img src="https://img.shields.io/badge/firmware-C%2B%2B-00599C.svg" alt="Firmware: C++">
   <img src="https://img.shields.io/badge/app-Uni--app%20%2F%20Vue-42B883.svg" alt="App: Uni-app/Vue">
-  <img src="https://img.shields.io/badge/status-Active%20Prototype-success.svg" alt="Status: Active Prototype">
+  <img src="https://img.shields.io/badge/status-Breadboard%20Prototype-orange.svg" alt="Status: Breadboard Prototype">
   <img src="https://img.shields.io/badge/display-ST7789%201.47%22-orange.svg" alt="Display: ST7789 1.47 inch">
 </p>
 
@@ -26,6 +26,8 @@
 ## Overview
 
 **LingMou (灵眸)** is a low-cost, lightweight **wearable smart interactive pendant based on multimodal perception** built around an **ESP32-C6** microcontroller and a **1.47" ST7789 LCD**. It fuses posture sensing (MPU6050), environmental sensing (AHT20), BLE + WiFi dual-channel communication, and a Uni-app mobile controller into a small wearable gadget that does not just *display* information — it **perceives, decides, expresses, and responds**.
+
+> **Status — breadboard prototype.** The current release is a **breadboard test version** built for functional validation and rapid iteration; it is **not yet a production-grade PCB design**. A formal PCB layout and enclosure are planned for the production release.
 
 Tilt it, shake it, or talk to it through the mobile app: its LCD eyes blink, gaze, get scared, and switch between **18 emotions** in real time, all driven by an on-board sensing-to-expression pipeline.
 
