@@ -1,0 +1,23 @@
+# Build artifacts
+.firmware/
+build/
+*.bin
+*.elf
+
+# Arduino / IDE
+.arduino/
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Uni-app / HBuilderX
+.unpackage/
+node_modules/
+dist/
+
+# Logs
+*.log
+
+# OS
+Thumbs.db
