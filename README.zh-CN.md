@@ -134,6 +134,20 @@
 | 电源 | USB-C / 5V 供电 | 1 |
 | 外壳 | 3D 打印 / 定制 | 1 |
 
+### 双显示模式设计
+
+- **眼睛模式（默认）** — 核心交互界面。展示拟态眼睛的自动眨眼、姿态跟随凝视、App 凝视控制、随机行为和随机凝视。
+- **信息模式** — 约 1 Hz 低频刷新的信息面板，显示当前时间、日期、星期、温湿度和 WiFi / BLE 状态。低频刷新是为了避免不必要的高频全屏重绘。
+
+  移动端 App 同样有对应的 **信息模式页面**（见下文"移动端 App"章节），以大字号 Bento 布局呈现同一组环境数据（温度、湿度、AHT20 状态），并附带 WiFi / BLE 实时状态和当前时间。
+
+<p align="center">
+  <img src="docs/images/app-info-day.jpg" width="32%" alt="灵眸控制中心 App — 信息模式（浅色）">
+</p>
+<p align="center"><i>App 信息模式：实时时钟 + 温湿度（含舒适度指示）+ AHT20 / WiFi 实时状态。</i></p>
+
+设备端用 GPIO 9 上的物理按键切换，App 端用首页"视图模式"卡片切换。
+
 ## 固件（ESP32-C6）
 
 固件为单 Arduino 框架工程（`LingMou.ino`），按逻辑分为以下几层：
@@ -249,7 +263,7 @@ GET /api/telemetry
 
 <p align="center">
   <img src="docs/images/app-eye-day.jpg" width="30%" alt="App — 眼睛模式（浅色）">
-  <img src="docs/images/app-eye-night.jpg" width="30%" alt="App — 眼睛模式（深色）">
+  <img src="docs/images/app-info-day.jpg" width="30%" alt="App — 信息模式（浅色）">
   <img src="docs/images/wifi-setup.jpg" width="30%" alt="App — WiFi 配网页">
 </p>
 
