@@ -139,12 +139,7 @@
 - **眼睛模式（默认）** — 核心交互界面。展示拟态眼睛的自动眨眼、姿态跟随凝视、App 凝视控制、随机行为和随机凝视。
 - **信息模式** — 约 1 Hz 低频刷新的信息面板，显示当前时间、日期、星期、温湿度和 WiFi / BLE 状态。低频刷新是为了避免不必要的高频全屏重绘。
 
-  移动端 App 同样有对应的 **信息模式页面**（见下文"移动端 App"章节），以大字号 Bento 布局呈现同一组环境数据（温度、湿度、AHT20 状态），并附带 WiFi / BLE 实时状态和当前时间。
-
-<p align="center">
-  <img src="docs/images/app-info-day.jpg" width="32%" alt="灵眸控制中心 App — 信息模式（浅色）">
-</p>
-<p align="center"><i>App 信息模式：实时时钟 + 温湿度（含舒适度指示）+ AHT20 / WiFi 实时状态。</i></p>
+  移动端 App 同样有对应的 **眼睛模式** 和 **信息模式** 页面（截图见下文"移动端 App"章节）。
 
 设备端用 GPIO 9 上的物理按键切换，App 端用首页"视图模式"卡片切换。
 
@@ -261,11 +256,30 @@ GET /api/telemetry
 - WiFi 配网页：BLE → 配网 → 在线 三阶段进度展示，并显示设备 IP。
 - 支持浅色 / 深色主题。
 
+#### 眼睛模式（Eye Mode）
+
 <p align="center">
-  <img src="docs/images/app-eye-day.jpg" width="30%" alt="App — 眼睛模式（浅色）">
-  <img src="docs/images/app-info-day.jpg" width="30%" alt="App — 信息模式（浅色）">
-  <img src="docs/images/wifi-setup.jpg" width="30%" alt="App — WiFi 配网页">
+  <img src="docs/images/app-eye-day.jpg" width="30%" alt="App — 眼睛模式（白天）">
+  &nbsp;
+  <img src="docs/images/app-eye-night.jpg" width="30%" alt="App — 眼睛模式（黑夜）">
 </p>
+<p align="center"><i>眼睛模式：18 情绪选择 + 眼控。左：白天，右：黑夜。</i></p>
+
+#### 信息模式（Info Mode）
+
+<p align="center">
+  <img src="docs/images/app-info-day.jpg" width="30%" alt="App — 信息模式（白天）">
+  &nbsp;
+  <img src="docs/images/app-info-night.jpg" width="30%" alt="App — 信息模式（黑夜）">
+</p>
+<p align="center"><i>信息模式：实时时钟 + 温湿度（含舒适度指示）+ AHT20 / WiFi 实时状态。左：白天，右：黑夜。</i></p>
+
+#### WiFi 配网
+
+<p align="center">
+  <img src="docs/images/wifi-setup.jpg" width="30%" alt="App — WiFi 配网">
+</p>
+<p align="center"><i>WiFi 配网：BLE → 配网 → 在线 三阶段进度，并显示设备 IP。</i></p>
 
 ## 可靠性
 

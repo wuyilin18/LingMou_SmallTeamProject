@@ -170,12 +170,7 @@ The current prototype is built on the **Waveshare ESP32-C6-LCD-1.47** developmen
 - **Eye Mode (default)** — The primary interaction surface. Displays the animated emotive eyes with auto-blink, posture-following gaze, app-driven gaze, random behavior, and random gaze.
 - **Info Mode** — A low-frequency (~1 Hz) information panel showing current time, date, weekday, temperature, humidity, and WiFi / BLE status. Refresh rate is intentionally low to avoid unnecessary full-screen redraws.
 
-  The mobile app mirrors this duality with its own **Info Mode** page (see the *Mobile App* section), which surfaces the same environment data — temperature, humidity, and AHT20 status — in a large-format Bento layout alongside WiFi / BLE live status and the real-time clock.
-
-<p align="center">
-  <img src="docs/images/app-info-day.jpg" width="32%" alt="LingMou Control app — Info Mode (light)">
-</p>
-<p align="center"><i>App Info Mode: real-time clock + temperature / humidity with comfort band + AHT20 / WiFi live status.</i></p>
+  The mobile app mirrors this duality with its own **Eye Mode** and **Info Mode** pages (see the *Mobile App* section for screenshots).
 
 Toggle between them on-device with the physical button on GPIO 9, or from the app's "View Mode" card.
 
@@ -311,14 +306,30 @@ The companion **LingMou Control** app is built with **Uni-app / Vue** and provid
 - A **WiFi provisioning drawer** with three-stage progress (BLE → configured → online) and resulting IP display.
 - Light / dark theme.
 
+#### Eye Mode
+
 <p align="center">
-  <img src="docs/images/app-eye-day.jpg" width="24%" alt="App — Eye mode (light)">
+  <img src="docs/images/app-eye-day.jpg" width="30%" alt="App — Eye mode (light)">
   &nbsp;
-  <img src="docs/images/app-info-day.jpg" width="24%" alt="App — Info mode (light)">
-  &nbsp;
-  <img src="docs/images/wifi-setup.jpg" width="24%" alt="App — WiFi provisioning">
+  <img src="docs/images/app-eye-night.jpg" width="30%" alt="App — Eye mode (dark)">
 </p>
-<p align="center"><i>LingMou Control app: 18-emotion picker + eye control (left), Info Mode with live environment (center), and WiFi provisioning (right).</i></p>
+<p align="center"><i>Eye Mode: 18-emotion picker + eye control. Left: light theme, right: dark theme.</i></p>
+
+#### Info Mode
+
+<p align="center">
+  <img src="docs/images/app-info-day.jpg" width="30%" alt="App — Info mode (light)">
+  &nbsp;
+  <img src="docs/images/app-info-night.jpg" width="30%" alt="App — Info mode (dark)">
+</p>
+<p align="center"><i>Info Mode: real-time clock + temperature / humidity (with comfort band) + AHT20 / WiFi live status. Left: light theme, right: dark theme.</i></p>
+
+#### WiFi Provisioning
+
+<p align="center">
+  <img src="docs/images/wifi-setup.jpg" width="30%" alt="App — WiFi provisioning">
+</p>
+<p align="center"><i>WiFi provisioning drawer: BLE → configured → online, with resulting IP display.</i></p>
 
 ---
 
